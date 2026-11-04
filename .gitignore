@@ -1,0 +1,18 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.venv/
+.pytest_cache/
+.coverage
+
+# macOS / editors
+.DS_Store
+.idea/
+.vscode/
+
+# Instrument data and saved projects can hold unpublished research data: keep them out of the repository
+*.pssession
+*.echemproj
