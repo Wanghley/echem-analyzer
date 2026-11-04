@@ -5,6 +5,10 @@ uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`, tagged `vM
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-11-04
+
+A more rigorous standard-addition analysis, and the first installers for macOS, Windows and Debian/Ubuntu.
+
 ### Added
 - **Installers** for macOS (`.dmg`, Apple silicon and Intel), Windows (installer and portable zip) and Debian/Ubuntu (`.deb`), built with
   PyInstaller by `packaging/build.py` and, on a version tag, by GitHub Actions, which publishes them as a GitHub Release with checksums.
@@ -25,6 +29,11 @@ uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`, tagged `vM
   twice. Older projects and presets with both on keep the concentration correction.
 - **LOD = 3.3σ/|b|** (was 3σ/|b|; the factor is adjustable) and the default σ is the residual s(y/x) (was the baseline noise). On data whose
   plateaus scatter more than the trace noise this gives a much larger, more honest LOD, and a warning says so.
+
+### Known limits
+- The installers are not signed: macOS Gatekeeper and Windows SmartScreen show a warning on first launch (the README explains how to
+  continue). The macOS app is only ad-hoc signed and not notarized.
+- The DPV, SWV, LSV, EIS, OCP and chronocoulometry readers still have only been checked on synthetic data, not on real instrument files.
 
 ## [0.4.0] - 2026-11-04
 
@@ -55,5 +64,6 @@ First tagged release: the platform for sensor electrochemistry beyond standard a
 - 0.2: multi-cycle CV analysis, saveable projects and named presets.
 - 0.1: chronoamperometry standard addition with LOD and LOQ, and comparison of runs.
 
-[Unreleased]: https://github.com/Wanghley/echem-analyzer/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/Wanghley/echem-analyzer/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/Wanghley/echem-analyzer/releases/tag/v0.5.0
 [0.4.0]: https://github.com/Wanghley/echem-analyzer/releases/tag/v0.4.0
