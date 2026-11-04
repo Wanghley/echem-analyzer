@@ -150,7 +150,11 @@ def test_ca_tiles_follow_the_fit(qapp, workdir, tmp_path):
     fill_additions(ca)
     assert ca.kpi_sens.value.text() == "0.665" and ca.kpi_cx.value.text() == "0.5968"
     assert ca.kpi_r2.value.text() == "0.9883" and "6 points" in ca.kpi_r2.sub.text()
-    assert ca.kpi_lod.value.text() == "0.00211" and "LOQ" in ca.kpi_lod.sub.text()
+    r = ca.result                                                       # default σ is s(y/x) and LOD = 3.3σ/S since the module rewrite
+    assert r.sigma_used == "fit" and ca.kpi_lod.value.text() == "0.377" and "LOQ" in ca.kpi_lod.sub.text()
+    assert r.lod == pytest.approx(3.3 * r.fit.s_yx / r.sensitivity)
+    assert r.lods["baseline"] < r.lods["fit"] / 50                       # this run scatters far more between plateaus than its noise
+    assert any("LOD from baseline noise" in w for w in r.warnings) and "LOD from baseline noise" in ca.results_label.text()
 
 
 def test_cv_tiles_report_conditioning(qapp, workdir, tmp_path):

@@ -100,17 +100,36 @@ result by hand.</p>
 <h2>Standard addition by chronoamperometry</h2>
 <p>Steps in the current are detected automatically (a peak of the lagged difference of the median-filtered trace, above k robust σ and
 <i>abrupt</i>, so smooth decays are not mistaken for additions). Drag a dashed marker to move a step, double-click to add one,
-right-click to remove (turn the zoom/pan tool off first).</p>
+right-click to remove (turn the zoom/pan tool off first). The same calculation is available to any other part of the app that has
+(added concentration, signal) pairs.</p>
+<h3>Inputs (each with a unit selector; a selector converts the number shown, never the quantity)</h3>
 <ul>
-<li><b>Added concentration:</b> C = C<sub>s</sub>·ΣV / (V<sub>0</sub> + ΣV) with dilution correction, else C<sub>s</sub>·ΣV / V<sub>0</sub>.</li>
-<li><b>Response per addition:</b> <i>plateau mean</i> (last W seconds before the next addition) or <i>drift-corrected</i>
-(pre/post straight lines extrapolated to the step). The two can differ by 15–30 % in slope on real data: choose deliberately.</li>
-<li><b>Fit:</b> signal against added concentration, baseline point included. <b>C<sub>x</sub></b> = intercept / slope with the usual
-regression uncertainty. <b>LOD</b> = 3σ/S, <b>LOQ</b> = 10σ/S.</li>
-<li>A background current biases C<sub>x</sub>; enter the blank current to correct for it.</li>
-<li>Jumps in the <i>opposite</i> direction are drawn as grey dotted lines and reported, because they corrupt the plateau they fall in.</li>
+<li><b>Stock</b> concentration and unit; <b>V<sub>0</sub></b>, the total cell volume before any addition; <b>sample volume</b>, the part of V<sub>0</sub>
+that is sample (smaller than V<sub>0</sub> when it is mixed with buffer or reagent: 1:1 means V<sub>0</sub>/2);
+<b>volume per addition</b> (one value, or one per step in the table) and the <b>verified volume</b> a pipette check gave, which replaces the nominal one.</li>
+<li><b>Background current</b> from a blank run at the same potential and time. It is subtracted from |i|; left at 0 the result carries a warning,
+because C<sub>x</sub> is then shifted by background / slope.</li>
+<li><b>Response:</b> plateau mean (settle time, averaging window, end guard) or drift-corrected. The two can differ by 15–30 % in slope on real data.</li>
 </ul>
-<p><b>Always enter your real V<sub>0</sub>, addition volumes and stock concentration.</b> The defaults are placeholders.</p>
+<h3>Calculation</h3>
+<ul>
+<li>Concentration after n additions: <b>C<sub>n</sub> = c<sub>s</sub>·n·v / (V<sub>0</sub> + n·v)</b>.</li>
+<li><b>One dilution correction only</b> (Dilution box): <i>Concentration</i> (the formula above), <i>Signal scaling</i> (x = c<sub>s</sub>·ΣV/V<sub>0</sub> and the signal
+multiplied by (V<sub>0</sub>+ΣV)/V<sub>0</sub>; this form is exact, also for the dilution of the sample itself) or <i>None</i>. They are alternatives:
+using both would correct the dilution twice. With the additions above about 2 % of V<sub>0</sub>, prefer signal scaling.</li>
+<li>Fit y = a + b·x with x = C<sub>n</sub> and y = signal − I<sub>bkg</sub>. <b>x<sub>0</sub> = −a/b</b>, <b>C<sub>x</sub> = |x<sub>0</sub>|</b> (the analyte in the cell),
+<b>C<sub>sample</sub> = C<sub>x</sub>·V<sub>0</sub>/V<sub>sample</sub></b>.</li>
+<li><b>Uncertainty:</b> s<sub>x0</sub> = (s<sub>y</sub>/|b|)·√(1/N + ȳ²/(b²·S<sub>xx</sub>)); the 95 % interval is t(0.975, N−2)·s<sub>x0</sub>, scaled by V<sub>0</sub>/V<sub>sample</sub> for C<sub>sample</sub>.</li>
+<li><b>Suitability</b> b·√S<sub>xx</sub>/s<sub>y</sub> (flagged below your threshold, default 12): how firmly the points pin down the extrapolation.</li>
+<li><b>LOD = 3.3σ/|b|</b>, <b>LOQ = 10σ/|b|</b> (both factors are adjustable). σ comes from the <i>residual s(y/x)</i> (default), the <i>baseline noise</i> of the trace,
+or the <i>SD of blank replicates</i>; all three, with their LODs, are always listed.</li>
+<li>Include or exclude the baseline (zero-addition) point, or tick <i>Also show the result with the baseline point switched</i> to see both.</li>
+</ul>
+<h3>Warnings (shown in the results; they never block the calculation)</h3>
+<p>background is 0 · sample volume larger than the cell · dilution off with a non-trivial added volume (or concentration mode with a large one) ·
+a result above your plausible maximum, or larger than the stock itself (wrong unit?) · residuals that curve or follow a pattern · suitability below the threshold ·
+baseline-noise LOD far below the s(y/x) LOD · a fit whose points do not match the additions plus baseline · settle time + window longer than a segment.</p>
+<p>All settings can be saved as a <b>preset</b> (units included) and reapplied to other runs. <b>Always enter your real V<sub>0</sub>, volumes and stock concentration:</b> the defaults are placeholders.</p>
 """),
     Topic("cv", "Analyses", "Cyclic voltammetry", """
 <h2>Cyclic voltammetry with several cycles</h2>

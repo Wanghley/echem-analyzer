@@ -20,6 +20,7 @@ from .cv_analysis import CVRun, analyze_run, group_cv_runs, summarize_stability
 from .labels import curve_run_label, curve_short_label, file_short
 from .models import KIND_CA, CAAnalysisSettings, CAResult, CVSettings, Curve, ProjectData
 from .palette import LIGHT
+from .standard_addition import DILUTION_LABELS, SIGMA_LABELS
 from .reporting import cv_cycle_table, cv_summary_rows, g, safe_name, step_table, summary_rows
 
 
@@ -139,13 +140,16 @@ def ca_setup_rows(s: CAAnalysisSettings, n_steps: int) -> list[tuple[str, str]]:
         ("Additions detected", str(n_steps)),
         ("Stock concentration", f"{g(s.stock_conc)} {s.stock_unit}"),
         ("Cell volume V₀", f"{g(s.v0_ml)} mL"),
-        ("Volume per addition", vol),
-        ("Dilution-corrected conc.", _yn(s.dilution_conc)),
-        ("Signal scaled for dilution", _yn(s.dilution_signal)),
+        ("Volume per addition", vol + (f"; verified {g(s.verified_ul)} µL used" if s.verified_ul > 0 else "")),
+        ("Dilution correction", DILUTION_LABELS.get(s.dilution_mode, s.dilution_mode)),
         ("Sample volume", f"{g(s.v_sample_ml)} mL" if s.v_sample_ml > 0 else "= V₀ (undiluted)"),
         ("Background |i| subtracted", f"{g(s.background)} µA"),
         ("Electrode area", f"{g(s.area_cm2)} cm²" if s.area_cm2 > 0 else "not given"),
-        ("σ for LOD/LOQ", "fit residuals" if s.sigma_source == "fit" else f"baseline noise ({g(s.baseline_window)} s window)"),
+        ("σ for LOD/LOQ", SIGMA_LABELS.get(s.sigma_source, s.sigma_source)
+         + (f" ({g(s.baseline_window)} s window)" if s.sigma_source == "baseline" else "")
+         + (f" (n = {len(s.blank_replicates)})" if s.sigma_source == "blank" else "")),
+        ("LOD / LOQ factors", f"{g(s.lod_k)}σ/S and {g(s.loq_k)}σ/S"),
+        ("Suitability threshold", g(s.suitability_min)),
         ("Baseline point in the fit", _yn(s.include_baseline)),
         ("Points excluded from the fit", ", ".join(excluded) if excluded else "none"),
     ]

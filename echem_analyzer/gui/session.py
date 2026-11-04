@@ -22,8 +22,8 @@ MAX_RECENT = 12
 # Fields remembered between runs / sessions and used to seed new analyses.
 DEFAULT_FIELDS = (
     ("stock_conc", float), ("stock_unit", str), ("v0_ml", float), ("v_add_ul", float),
-    ("v_sample_ml", float), ("area_cm2", float), ("dilution_conc", bool),
-    ("dilution_signal", bool),
+    ("v_sample_ml", float), ("area_cm2", float), ("dilution_mode", str), ("v0_unit", str), ("v_add_unit", str),
+    ("v_sample_unit", str), ("bkg_unit", str), ("verified_unit", str),
 )
 
 

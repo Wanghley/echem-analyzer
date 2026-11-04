@@ -111,8 +111,11 @@ def test_report_contents_match_the_analysis(data):
     sec = next(s for s in rep.sections if s.kind == "ca" and "B2 GY" in s.title)
     kv = {k: v for b in sec.blocks if isinstance(b, KeyValueBlock) for k, v in b.rows}
     c, s, r = next(x for x in ca_runs if "B2 GY" in x[0].source)
-    assert kv["Slope = sensitivity"].startswith(f"{r.fit.slope:.4g}")
+    assert kv["Slope b = sensitivity"].startswith(f"{r.fit.slope:.4g}")
     assert kv["Stock concentration"] == "505.1 mM" and kv["Cell volume V₀"] == "10 mL"
+    assert kv["C_x = |x₀| in the cell"].startswith(f"{r.c_x:.4g} ± {r.c_x_ci95:.2g}")          # the 95 % interval is in the report
+    assert kv["Dilution correction"].startswith("Concentration") and f"{r.lod:.4g}" in kv["LOD = 3.3σ/S"]
+    assert {"σ → LOD · residual s(y/x)", "σ → LOD · baseline noise", "σ → LOD · blank replicates"} <= set(kv)
     paths = [b.path for b in sec.blocks if isinstance(b, FigureBlock)]
     assert len(paths) == 2 and all(p.endswith(".png") for p in paths) and all(png_ok(b.png) for b in sec.blocks if isinstance(b, FigureBlock))
     # the step tables live in the appendix, one per analysed CA run
@@ -156,7 +159,7 @@ def test_pdf_is_a_real_multipage_document_with_the_right_text(data, qapp, tmp_pa
     assert doc.pageCount() == pages
     text = "\n".join(doc.getAllText(i).text() for i in range(doc.pageCount()))
     c, s, r = next(x for x in analysed_runs(data)[0] if "B2 GY" in x[0].source)
-    for needle in ("CSF sensor conditioning", "Electrochemical analysis report", "Slope = sensitivity",
+    for needle in ("CSF sensor conditioning", "Electrochemical analysis report", "Slope b = sensitivity",
                    f"{r.fit.slope:.4g}", "505.1 mM", "Appendix", "Page 1 of", f"Page {pages} of {pages}"):
         assert needle in text, needle
     assert "opposite direction" in text                                                    # the A6 warning is in the PDF

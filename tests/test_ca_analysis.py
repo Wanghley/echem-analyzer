@@ -122,11 +122,14 @@ def test_drift_method_removes_baseline_drift():
 
 def test_lod_loq_formula():
     t, i, steps = synthetic_staircase(noise=0.002, drift=0.0)
-    s = CAAnalysisSettings(step_times=list(steps), stock_conc=10.0, v0_ml=10.0, v_add_ul=100.0, drop_last=0)
+    s = CAAnalysisSettings(step_times=list(steps), stock_conc=10.0, v0_ml=10.0, v_add_ul=100.0, drop_last=0, sigma_source="baseline")
     r = analyze_ca(t, i, s)
-    assert r.sigma == pytest.approx(0.002, rel=0.4)
-    assert r.lod == pytest.approx(3 * r.sigma / r.sensitivity)
+    assert r.sigma == pytest.approx(0.002, rel=0.4)                                   # the noise of the trace
+    assert r.lod == pytest.approx(3.3 * r.sigma / r.sensitivity)                       # LOD = 3.3σ/S, LOQ = 10σ/S by default
     assert r.loq == pytest.approx(10 * r.sigma / r.sensitivity)
+    s.sigma_source, s.lod_k = "fit", 3.0                                               # the default is s(y/x); k is adjustable
+    r = analyze_ca(t, i, s)
+    assert r.sigma == pytest.approx(r.fit.s_yx) and r.lod == pytest.approx(3.0 * r.fit.s_yx / r.sensitivity)
 
 
 def test_c_sample_dilution_of_sample():

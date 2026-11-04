@@ -13,6 +13,7 @@ import math
 from typing import Optional, Sequence
 
 import numpy as np
+from scipy import stats
 from scipy.ndimage import median_filter
 from scipy.signal import find_peaks
 
@@ -216,9 +217,16 @@ def linear_fit(x: Sequence[float], y: Sequence[float]) -> Optional[FitResult]:
         )
     else:
         x_int = x_int_se = NAN
+    t_crit = float(stats.t.ppf(0.975, n - 2)) if n > 2 else NAN
+    ci = t_crit * x_int_se if n > 2 else NAN
+    if n > 2 and slope != 0:
+        suit = abs(slope) * math.sqrt(sxx) / s_yx if s_yx > 0 else float("inf")      # no scatter at all: perfectly suitable
+    else:
+        suit = NAN
     return FitResult(
         slope=slope, intercept=icpt, slope_se=slope_se, intercept_se=icpt_se, r2=r2,
         s_yx=s_yx, n=n, x=x, y=y, residuals=res, x_intercept=x_int, x_intercept_se=x_int_se,
+        sxx=sxx, t_crit=t_crit, x_intercept_ci95=ci, suitability=suit,
     )
 
 
@@ -330,62 +338,39 @@ def analyze_ca(t: np.ndarray, i: np.ndarray, s: CAAnalysisSettings) -> CAResult:
     finite = levels[np.isfinite(levels)]
     polarity = -1.0 if finite.size and np.median(finite) < 0 else 1.0
 
-    # --- concentrations and signal
-    v_ul = list(s.step_volumes_ul)
-    conc = added_concentrations(
-        s.stock_conc, s.v0_ml, v_ul, s.dilution_conc, s.step_conc_override
-    )
+    # --- concentrations and signal: exactly one dilution correction (concentration, signal scaling or none)
+    from . import standard_addition as sa              # imported here: standard_addition builds on linear_fit above
+    v_ul = sa.volumes_used_ul(s)
+    dil_conc, scale_signal = sa.dilution_flags(s.dilution_mode)
+    conc = added_concentrations(s.stock_conc, s.v0_ml, v_ul, dil_conc, s.step_conc_override)
     if not np.all(np.isfinite(conc)) and len(steps):
         warnings.append("Enter stock concentration, initial cell volume and addition volumes (or concentration overrides).")
 
     signal = polarity * levels - s.background
-    if s.dilution_signal and s.v0_ml > 0:
+    if scale_signal and s.v0_ml > 0:
         cum = np.concatenate([[0.0], np.cumsum([float(v or 0) for v in v_ul])])
         signal = signal * (s.v0_ml * 1000.0 + cum) / (s.v0_ml * 1000.0)
+    warnings += sa.input_warnings(s, v_ul, [b - a for a, b in seg_bounds])
 
     included = np.array([s.include_baseline] + [bool(x) for x in s.step_included], dtype=bool)
 
     res = CAResult(
         step_times=steps, seg_bounds=seg_bounds, win_bounds=win_bounds,
         plateau=plateau, plateau_sd=plateau_sd, delta=delta, signal=signal,
-        conc_added=conc, included=included, polarity=polarity, warnings=warnings,
+        conc_added=conc, included=included, polarity=polarity, warnings=warnings, volumes_ul=v_ul,
     )
 
-    # --- fit
-    mask = included & np.isfinite(conc) & np.isfinite(signal)
-    fit = linear_fit(conc[mask], signal[mask]) if mask.sum() >= 2 else None
-    res.fit = fit
-    if fit is None:
+    # --- fit, uncertainty, σ / LOD / LOQ, C_x and C_sample, and the checks (shared with every other caller)
+    sigma_b = baseline_sigma(t, i, steps[0], s.baseline_window, guard) if len(steps) else NAN
+    fig = sa.evaluate_points(conc, signal, included, s, sigma_baseline=sigma_b, n_additions=len(steps))
+    res.fit = fig.fit
+    res.n_expected = fig.n_expected
+    warnings += fig.warnings
+    if fig.fit is None:
         return res
-
-    if mask.sum() == 2:
-        warnings.append("Only 2 points in the fit: no uncertainty estimates.")
-    if fit.slope <= 0:
-        warnings.append("Fitted slope is not positive: check the included points and polarity.")
-
-    # --- sigma, LOD / LOQ, sensitivity
-    sigma_b = (
-        baseline_sigma(t, i, steps[0], s.baseline_window, guard) if len(steps) else NAN
-    )
-    sigma = fit.s_yx if s.sigma_source == "fit" else sigma_b
-    if not math.isfinite(sigma):
-        sigma = fit.s_yx if math.isfinite(fit.s_yx) else NAN
-        if s.sigma_source != "fit":
-            warnings.append("Baseline too short for σ; using the fit's residual std. dev.")
-    res.sigma = sigma
-    m = abs(fit.slope)
-    res.sensitivity = m
-    res.sensitivity_area = m / s.area_cm2 if s.area_cm2 > 0 else NAN
-    if m > 0 and math.isfinite(sigma):
-        res.lod = 3.0 * sigma / m
-        res.loq = 10.0 * sigma / m
-
-    # --- standard addition
-    if fit.slope != 0:
-        res.c_x = fit.intercept / fit.slope
-        res.c_x_se = fit.x_intercept_se
-        v_sample = s.v_sample_ml if s.v_sample_ml > 0 else s.v0_ml
-        res.c_sample = res.c_x * (s.v0_ml / v_sample) if v_sample > 0 else res.c_x
-    if not s.include_baseline:
-        warnings.append("Baseline point excluded: the x-intercept is extrapolated from the additions only.")
+    for name in ("x0", "c_x", "c_x_se", "c_x_ci95", "c_sample", "c_sample_se", "c_sample_ci95", "suitability",
+                 "sigmas", "lods", "loqs", "sigma", "lod", "loq", "sensitivity", "alt"):
+        setattr(res, name, getattr(fig, name))
+    res.sigma_used = fig.sigma_used
+    res.sensitivity_area = fig.sensitivity / s.area_cm2 if s.area_cm2 > 0 and math.isfinite(fig.sensitivity) else NAN
     return res

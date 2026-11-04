@@ -28,8 +28,15 @@ def pm(x: float, se: float, digits: int = 4) -> str:
     return f"{g(x, digits)} ± {g(se, 2)}"
 
 
+def _ci(x: float, ci: float) -> str:
+    if x is None or not math.isfinite(x):
+        return "—"
+    return f"{g(x, 4)} ± {g(ci, 2)}" if ci is not None and math.isfinite(ci) else g(x, 4)
+
+
 def summary_rows(s: CAAnalysisSettings, r: CAResult) -> list[tuple[str, str, str]]:
-    """(name, value, unit) rows describing the fit and the derived figures of merit."""
+    """(name, value, unit) rows describing the fit and the derived figures of merit; every value carries its unit."""
+    from .standard_addition import SIGMA_LABELS
     u = s.stock_unit
     f = r.fit
     rows: list[tuple[str, str, str]] = [
@@ -38,23 +45,35 @@ def summary_rows(s: CAAnalysisSettings, r: CAResult) -> list[tuple[str, str, str
     ]
     if f is None:
         return rows
+    nominal = s.v_add_ul
+    if s.verified_ul > 0:
+        rows.append(("Volume per addition", f"{g(s.verified_ul)} (verified; nominal {g(nominal)})", "µL"))
+    suit = "∞ (no scatter)" if math.isinf(f.suitability) else g(f.suitability, 3)
     rows += [
-        ("Points in fit", str(f.n), ""),
-        ("Slope = sensitivity", pm(f.slope, f.slope_se), f"µA/{u}"),
-        ("Intercept", pm(f.intercept, f.intercept_se), "µA"),
+        ("Points in fit (N)", str(f.n), f"expected {r.n_expected}"),
+        ("Slope b = sensitivity", pm(f.slope, f.slope_se), f"µA/{u}"),
+        ("Intercept a", pm(f.intercept, f.intercept_se), "µA"),
         ("R²", g(f.r2, 5), ""),
         ("s(y/x)", g(f.s_yx), "µA"),
+        ("Suitability b·√Sxx/s(y)", suit, f"minimum {s.suitability_min:g}"),
     ]
     if s.area_cm2 > 0:
         rows.append(("Sensitivity / area", g(r.sensitivity_area), f"µA {u}⁻¹ cm⁻²"))
     rows += [
-        ("σ (" + ("fit residuals" if s.sigma_source == "fit" else "baseline noise") + ")", g(r.sigma), "µA"),
-        ("LOD = 3σ/S", g(r.lod), u),
-        ("LOQ = 10σ/S", g(r.loq), u),
-        ("C_x (x-intercept)", pm(r.c_x, r.c_x_se), u),
+        (f"σ ({SIGMA_LABELS.get(r.sigma_used, '—')})", g(r.sigma), "µA"),
+        (f"LOD = {s.lod_k:g}σ/S", g(r.lod), u),
+        (f"LOQ = {s.loq_k:g}σ/S", g(r.loq), u),
+        ("x-intercept x₀ = −a/b", g(r.x0), u),
+        ("C_x = |x₀| in the cell", _ci(r.c_x, r.c_x_ci95), f"{u} (95 % CI)"),
     ]
     if s.v0_ml > 0:
-        rows.append(("C_sample", g(r.c_sample), u))
+        rows.append(("C_sample = C_x·V₀/V_sample", _ci(r.c_sample, r.c_sample_ci95), f"{u} (95 % CI)"))
+    for key in ("fit", "baseline", "blank"):                    # all three σ sources, whichever one is used
+        sg, lod = r.sigmas.get(key, float("nan")), r.lods.get(key, float("nan"))
+        rows.append((f"σ → LOD · {SIGMA_LABELS[key]}", f"{g(sg, 3)} → {g(lod, 3)}", f"µA → {u}"))
+    if r.alt:
+        rows.append((f"C_x {'with' if r.alt['include_baseline'] else 'without'} the baseline point",
+                     _ci(r.alt["c_x"], r.alt["c_x_ci95"]), f"{u} (95 % CI), N = {r.alt['n']}"))
     return rows
 
 
@@ -80,7 +99,7 @@ def step_table(s: CAAnalysisSettings, r: CAResult) -> tuple[list[str], list[list
         else:
             ov = s.step_conc_override[k - 1]
             rows.append([
-                k, bool(r.included[k]), r.step_times[k - 1], s.step_volumes_ul[k - 1],
+                k, bool(r.included[k]), r.step_times[k - 1], r.volumes_ul[k - 1] if k - 1 < len(r.volumes_ul) else s.step_volumes_ul[k - 1],
                 r.conc_added[k], "" if ov is None else ov,
                 r.plateau[k], r.plateau_sd[k], r.delta[k], r.signal[k],
             ])

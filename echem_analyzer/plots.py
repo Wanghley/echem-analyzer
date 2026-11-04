@@ -150,9 +150,9 @@ def ca_calibration(fig, s: CAAnalysisSettings, r: CAResult, p: Palette) -> None:
                 xe = np.array([xi, x_lo])
                 ax.plot(xe, fit.slope * xe + fit.intercept, color=p.extrap, lw=1.3, ls="--", zorder=2)
             ax.plot([xi], [0], "D", color=p.cx, ms=6.5, zorder=5)
-        ax.text(0.03, 0.97, f"C$_x$ = {pm(r.c_x, r.c_x_se, 3)} {s.stock_unit}", transform=ax.transAxes, ha="left",
+        ax.text(0.03, 0.97, f"C$_x$ = {pm(r.c_x, r.c_x_ci95, 3)} {s.stock_unit}", transform=ax.transAxes, ha="left",
                 va="top", fontsize=10, weight="bold", color=p.cx)
-        ax.text(0.03, 0.86, f"y = {fit.slope:.4g}·x + {fit.intercept:.4g}\nR² = {fit.r2:.4f}",
+        ax.text(0.03, 0.87, f"(± 95 % CI)\ny = {fit.slope:.4g}·x + {fit.intercept:.4g}\nR² = {fit.r2:.4f}",
                 transform=ax.transAxes, ha="left", va="top", fontsize=8.5, color=p.muted)
         axr.axhline(0, color=p.border_strong, lw=0.9)
         axr.plot(fit.x, fit.residuals, "o", color=p.trace, ms=4)
@@ -163,7 +163,7 @@ def ca_calibration(fig, s: CAAnalysisSettings, r: CAResult, p: Palette) -> None:
         ax.set_xlabel("Addition number (enter stock, $V_0$ and V add to calibrate)")
         ax.set_xticks(x)
     ax.set_ylabel("Signal (µA)")
-    ax.set_title("Standard-addition calibration", loc="left", color=p.text)
+    ax.set_title("Standard addition", loc="left", color=p.text)
 
 
 # --------------------------------------------------------------------------- cyclic voltammetry

@@ -88,6 +88,7 @@ def collect_results(data: ProjectData) -> dict[str, str]:
         "project", "electrode", "analyte", "matrix", "file", "run", "method", "n_additions",
         "stock", "stock_unit", "V0_mL", "slope", "slope_se", "intercept", "R2", "sensitivity",
         "sensitivity_per_cm2", "sigma_uA", "LOD", "LOQ", "C_x", "C_x_se", "C_sample", "warnings",
+        "C_x_CI95", "C_sample_CI95", "suitability", "sigma_source", "dilution_mode",
     ]
     ca_rows: list[list] = []
     for f in data.files:
@@ -106,6 +107,8 @@ def collect_results(data: ProjectData) -> dict[str, str]:
                     r.sigma if fit else "", r.lod if fit else "", r.loq if fit else "",
                     r.c_x if fit else "", r.c_x_se if fit else "", r.c_sample if fit else "",
                     " | ".join(r.warnings),
+                    r.c_x_ci95 if fit else "", r.c_sample_ci95 if fit else "", r.suitability if fit else "",
+                    r.sigma_used, s2.dilution_mode,
                 ])
                 header, rows = step_table(s2, r)
                 out[f"results/ca/{unique(safe_name(f.stem + '__' + (c.meta.get('run_title') or c.title)))}__steps.csv"] = (

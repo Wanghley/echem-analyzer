@@ -6,15 +6,16 @@ from pathlib import Path
 from typing import Optional
 
 import numpy as np
-from PySide6.QtCore import QSignalBlocker, Qt, QUrl
+from PySide6.QtCore import QSignalBlocker, Qt, QUrl, Signal
 from PySide6.QtGui import QDesktopServices, QGuiApplication
 from PySide6.QtWidgets import (
     QAbstractItemView, QCheckBox, QComboBox, QDoubleSpinBox, QFormLayout, QFrame, QGridLayout,
-    QHBoxLayout, QLabel, QMessageBox, QPushButton, QScrollArea, QSpinBox,
+    QHBoxLayout, QLabel, QLineEdit, QMessageBox, QPushButton, QScrollArea, QSpinBox,
     QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget,
 )
 
 from .. import plots, theme
+from .. import standard_addition as sa
 from ..ca_analysis import analyze_ca, sync_step_lists
 from ..models import CAAnalysisSettings, CAResult, Curve
 from ..reporting import g, pm, results_plain_text, summary_rows, write_exports
@@ -28,6 +29,70 @@ DETECT_ONLY = {"detect_k", "detect_min_sep", "expected_steps"}      # only used 
 HINT = ("Drag a dashed line to move a step · double-click to add one · right-click a line to remove it "
         "(turn off the toolbar's zoom/pan tool first). A dotted grey line marked ! is a jump in the "
         "opposite direction that was not counted as an addition.")
+
+class _UnitSpin(QWidget):
+    """A number with a unit selector (never an assumed unit). The settings hold mL / µL / µA; choosing another unit
+    converts the number on screen and leaves the physical quantity unchanged."""
+
+    value_changed = Signal(float)          # canonical value
+    unit_changed = Signal(str)
+
+    def __init__(self, unit_attr: str, table: dict[str, float], lo: float, hi: float, decimals: int = 4, step: float = 0.1, tip: str = ""):
+        super().__init__()
+        self.unit_attr, self._table, self._lo, self._hi = unit_attr, table, lo, hi
+        self._canon = 0.0
+        lay = QHBoxLayout(self)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.setSpacing(6)
+        self.spin = QDoubleSpinBox()
+        self.spin.setDecimals(decimals)
+        self.spin.setSingleStep(step)
+        self.spin.setKeyboardTracking(False)
+        self.spin.setGroupSeparatorShown(False)
+        self.combo = QComboBox()
+        self.combo.setSizeAdjustPolicy(QComboBox.AdjustToContents)
+        self.combo.setMinimumWidth(62)
+        for u in table:
+            self.combo.addItem(u, u)
+        if tip:
+            self.spin.setToolTip(tip)
+        lay.addWidget(self.spin, 1)
+        lay.addWidget(self.combo)
+        self.spin.valueChanged.connect(self._typed)
+        self.combo.currentIndexChanged.connect(self._unit_picked)
+
+    def _factor(self) -> float:
+        return sa.factor(self.combo.currentData(), self._table)
+
+    def _show(self) -> None:
+        f = self._factor()
+        with QSignalBlocker(self.spin):
+            self.spin.setRange(self._lo / f, self._hi / f)
+            self.spin.setValue(self._canon / f)
+
+    def _typed(self, v: float) -> None:
+        self._canon = v * self._factor()                   # the stored quantity is authoritative, not the rounded display
+        self.value_changed.emit(self._canon)
+
+    def _unit_picked(self, _i: int) -> None:
+        self._show()                                       # same quantity, shown in the new unit
+        self.unit_changed.emit(self.combo.currentData())
+
+    def value(self) -> float:
+        """The stored quantity (mL, µL or µA, whatever the unit shown)."""
+        return self._canon
+
+    def setValue(self, canonical: float) -> None:  # noqa: N802
+        """Set the stored quantity (like QDoubleSpinBox.setValue, which the other bound widgets offer)."""
+        self.spin.setValue(canonical / self._factor())
+
+    def set_canonical(self, value: float, unit: str) -> None:
+        with QSignalBlocker(self.combo):
+            i = self.combo.findData(unit)
+            self.combo.setCurrentIndex(i if i >= 0 else 0)
+        self._canon = float(value)
+        self._show()
+
 
 # table columns
 COL_USE, COL_N, COL_T, COL_V, COL_C, COL_OVR, COL_I, COL_DI, COL_SIG = range(9)
@@ -107,7 +172,7 @@ class CATab(QWidget):
         split.addWidget(self._build_side_panel())
         split.setStretchFactor(0, 1)
         split.setStretchFactor(1, 0)
-        split.setSizes([1000, 372])
+        split.setSizes([1000, 440])            # the unit selectors and the longer result names need room; drag the grip to change it
 
         self.editor = StepLineEditor(
             self.ca_plot, self.ax_ca,
@@ -170,6 +235,9 @@ class CATab(QWidget):
             w.toggled.connect(lambda v, a=attr: self._on_changed(a, bool(v)))
         elif isinstance(w, QComboBox):
             w.currentIndexChanged.connect(lambda _i, a=attr, c=w: self._on_changed(a, c.currentData()))
+        elif isinstance(w, _UnitSpin):
+            w.value_changed.connect(lambda v, a=attr: self._on_changed(a, v))
+            w.unit_changed.connect(lambda u, a=w.unit_attr: self._on_unit_changed(a, u))
         return w
 
     def _build_side_panel(self) -> QWidget:
@@ -206,7 +274,7 @@ class CATab(QWidget):
         card.body.addWidget(self.preset_bar)
         lay.addWidget(card)
 
-        # -- additions
+        # -- additions: every quantity with a unit selector
         card = Card("Additions")
         f = QFormLayout()
         f.setLabelAlignment(Qt.AlignLeft)
@@ -214,35 +282,44 @@ class CATab(QWidget):
         row.setContentsMargins(0, 0, 0, 0)
         row.addWidget(self._bind("stock_conc", self._spin(0, 1e9, 4, 1, "", "Concentration of the stock you pipetted in.")), 1)
         cb = QComboBox()
-        for u in ("mM", "µM", "nM", "M"):
+        for u in sa.STOCK_UNITS:
             cb.addItem(u, u)
         row.addWidget(self._bind("stock_unit", cb))
         rw = QWidget()
         rw.setLayout(row)
         f.addRow("Stock conc.", rw)
-        f.addRow("Cell volume V₀", self._bind("v0_ml", self._spin(0, 1e5, 3, 0.5, "mL", "Solution volume before the first addition.")))
+        f.addRow("Cell volume V₀", self._bind("v0_ml", _UnitSpin("v0_unit", sa.VOLUME_ML, 0, 1e5, 4, 0.5,
+                 "Total solution volume in the cell before the first addition (sample plus any other reagent).")))
+        f.addRow("Sample volume", self._bind("v_sample_ml", _UnitSpin("v_sample_unit", sa.VOLUME_ML, 0, 1e5, 4, 0.5,
+                 "Volume of the original sample inside V₀ (0 = V₀, i.e. the sample is not mixed with anything).\n"
+                 "A 1:1 mix with buffer: V_sample = V₀/2, so C_sample = 2·Cₓ.")))
         row = QHBoxLayout()
         row.setContentsMargins(0, 0, 0, 0)
-        row.addWidget(self._bind("v_add_ul", self._spin(0, 1e6, 2, 1, "µL", "Default volume per addition.")), 1)
-        b = QPushButton("Apply to all")
+        row.addWidget(self._bind("v_add_ul", _UnitSpin("v_add_unit", sa.VOLUME_UL, 0, 1e6, 3, 1, "Nominal volume per addition.")), 1)
+        b = QPushButton("All steps")
         b.setToolTip("Set every step's volume to this value.")
         b.clicked.connect(self._apply_vadd_all)
         row.addWidget(b)
         rw = QWidget()
         rw.setLayout(row)
         f.addRow("V add (each)", rw)
-        f.addRow(self._bind("dilution_conc", QCheckBox("Correct concentration for dilution")))
-        cbx = QCheckBox("Scale signal by (V₀+ΣV)/V₀")
-        cbx.setToolTip("Compensates the signal for dilution of the sample by the additions.")
-        f.addRow(self._bind("dilution_signal", cbx))
-        f.addRow("Sample volume", self._bind("v_sample_ml", self._spin(0, 1e5, 3, 0.5, "mL",
-                 "Volume of original sample inside V₀ (0 = V₀, i.e. undiluted).")))
-        bg = self._spin(-1e6, 1e6, 4, 0.01, "µA",
-                        "Blank/background current magnitude subtracted from |i| before the fit.\n"
-                        "Without it the x-intercept is biased by the non-analyte (capacitive/residual) current.")
+        f.addRow("Verified volume", self._bind("verified_ul", _UnitSpin("verified_unit", sa.VOLUME_UL, 0, 1e6, 3, 0.1,
+                 "The volume the pipette really dispensed (gravimetric or other check). Used instead of the nominal volume for\n"
+                 "every step still at the nominal value; 0 = no pipette check.")))
+        cb = QComboBox()
+        for key, label in (("concentration", "Concentration"), ("signal", "Signal scaling"), ("none", "None")):
+            cb.addItem(label, key)
+        cb.setToolTip("Exactly one correction is applied, never both:\n"
+                      "Concentration: x = c·nv/(V₀+nv). Corrects the added standard only.\n"
+                      "Signal scaling: x = c·nv/V₀ and the signal × (V₀+ΣV)/V₀. Exact, also for the sample's own dilution.\n"
+                      "None: no correction (only sensible when the additions are a tiny fraction of V₀).")
+        f.addRow("Dilution", self._bind("dilution_mode", cb))
+        bg = _UnitSpin("bkg_unit", sa.CURRENT_UA, -1e6, 1e6, 4, 0.01,
+                       "Magnitude of the blank current subtracted from |i| (a blank run at the same potential and time).\n"
+                       "Without it the x-intercept is shifted by background / slope.")
         f.addRow("Background |i|", self._bind("background", bg))
         f.addRow("Electrode area", self._bind("area_cm2", self._spin(0, 1e3, 5, 0.01, "cm²",
-                 "Optional: reports sensitivity per cm².")))
+                 "Optional: used only to report the sensitivity per cm².")))
         card.body.addLayout(f)
         lay.addWidget(card)
 
@@ -268,11 +345,24 @@ class CATab(QWidget):
         card = Card("Fit and LOD")
         f = QFormLayout()
         cb = QComboBox()
-        cb.addItem("Baseline noise", "baseline")
-        cb.addItem("Fit residuals s(y/x)", "fit")
+        for key in sa.SIGMA_SOURCES:
+            cb.addItem({"fit": "Residual s(y/x) (default)", "baseline": "Baseline noise of this trace", "blank": "Blank replicates (SD)"}[key], key)
+        cb.setToolTip("σ for LOD and LOQ. All three are always listed in the results; this picks the one behind the headline LOD.")
         f.addRow("σ for LOD/LOQ", self._bind("sigma_source", cb))
-        f.addRow("Baseline window", self._bind("baseline_window", self._spin(1, 600, 1, 1, "s")))
+        f.addRow("Baseline window", self._bind("baseline_window", self._spin(1, 600, 1, 1, "s", "Length of the trace before the first addition used for the baseline noise.")))
+        self.blank_edit = QLineEdit()
+        self.blank_edit.setPlaceholderText("e.g. 0.011, 0.012, 0.010")
+        self.blank_edit.setToolTip("Currents measured in blank replicates (same unit as the background). Their standard deviation is σ for the 'blank' source; at least 2.")
+        self.blank_edit.editingFinished.connect(self._on_blank_edited)
+        f.addRow("Blank replicates", self.blank_edit)
+        f.addRow("LOD factor k", self._bind("lod_k", self._spin(1, 10, 1, 0.1, "", "LOD = k·σ/|b|. 3.3 follows ICH, 3 is the older IUPAC-style value.")))
+        f.addRow("LOQ factor", self._bind("loq_k", self._spin(1, 30, 1, 1, "", "LOQ = factor·σ/|b| (10 by convention).")))
+        f.addRow("Suitability min.", self._bind("suitability_min", self._spin(0, 1000, 1, 1, "",
+                 "b·√Sxx / s(y) below this flags the extrapolation as unreliable (default 12).")))
+        f.addRow("Plausible max. C", self._bind("plausible_max", self._spin(0, 1e12, 4, 1, "",
+                 "Largest sample concentration you would believe, in the stock's unit (0 = no check). A result above it suggests a wrong unit.")))
         f.addRow(self._bind("include_baseline", QCheckBox("Include baseline point in fit")))
+        f.addRow(self._bind("compare_baseline", QCheckBox("Also show the result with the baseline point switched")))
         card.body.addLayout(f)
         lay.addWidget(card)
 
@@ -376,6 +466,9 @@ class CATab(QWidget):
                 elif isinstance(w, QComboBox):
                     i = w.findData(val)
                     w.setCurrentIndex(i if i >= 0 else 0)
+                elif isinstance(w, _UnitSpin):
+                    w.set_canonical(val, getattr(self.s, w.unit_attr))
+            self._show_blank()
         finally:
             self._loading = False
 
@@ -400,6 +493,28 @@ class CATab(QWidget):
         if attr in DETECT_ONLY:
             return
         self.recompute()
+
+    def _on_unit_changed(self, unit_attr: str, unit: str) -> None:
+        self._on_changed(unit_attr, unit)
+        if unit_attr == "bkg_unit":
+            self._show_blank()                                  # the replicate currents are shown in the background's unit
+
+    def _show_blank(self) -> None:
+        unit = self.s.bkg_unit if self.s is not None else "µA"
+        vals = self.s.blank_replicates if self.s is not None else []
+        self.blank_edit.setText(", ".join(f"{sa.from_canonical(v, unit, sa.CURRENT_UA):.6g}" for v in vals))
+
+    def _on_blank_edited(self) -> None:
+        if self._loading or self.s is None:
+            return
+        import re
+        try:
+            nums = [float(x) for x in re.split(r"[,;\s]+", self.blank_edit.text().strip()) if x]      # decimal point, not comma
+        except ValueError:
+            self._show_blank()                                  # not numbers: put the stored values back
+            return
+        self._on_changed("blank_replicates", [sa.to_canonical(v, self.s.bkg_unit, sa.CURRENT_UA) for v in nums])
+        self._show_blank()
 
     def detect(self) -> None:
         if self.curve is None or self.s is None:
@@ -565,7 +680,7 @@ class CATab(QWidget):
         if f is not None:
             r2_tone = "success" if f.r2 >= 0.995 else ("warning" if f.r2 < 0.98 else "")
             self.kpi_sens.set(g(f.slope, 4), f"µA/{u}  ± {g(f.slope_se, 2)}")
-            self.kpi_cx.set(g(r.c_x, 4), f"± {g(r.c_x_se, 2)} {u}")
+            self.kpi_cx.set(g(r.c_x, 4), f"± {g(r.c_x_ci95, 2)} {u} (95 % CI)")
             self.kpi_lod.set(g(r.lod, 3), f"{u} · LOQ {g(r.loq, 3)}")
             self.kpi_r2.set(g(f.r2, 4), f"{f.n} points in the fit", r2_tone)
         else:
@@ -584,9 +699,6 @@ class CATab(QWidget):
                          "(or per-step concentration overrides) to fit the calibration.</p>")
         for w in r.warnings:
             parts.append(f"<p style='color:{p.warning}'>⚠ {w}</p>")
-        if r.fit is not None and s.background == 0:
-            parts.append(f"<p style='{muted}'>Background current is 0 µA: C<sub>x</sub> includes the "
-                         "non-analyte current of the baseline. Enter a blank value to correct it.</p>")
         self.results_label.setText("".join(parts))
 
     # ================================================================== export / copy

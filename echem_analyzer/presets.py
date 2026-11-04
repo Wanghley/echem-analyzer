@@ -26,16 +26,21 @@ KIND_CA, KIND_CV = "ca", "cv"
 CA_FIELDS = (
     "drop_last", "detect_k", "detect_min_sep", "detect_lag", "expected_steps",
     "method", "settle", "window", "end_guard",
-    "stock_conc", "stock_unit", "v0_ml", "v_add_ul", "dilution_conc", "dilution_signal",
-    "v_sample_ml", "background", "area_cm2", "sigma_source", "baseline_window", "include_baseline",
+    "stock_conc", "stock_unit", "v0_ml", "v_add_ul", "verified_ul", "dilution_mode",
+    "v_sample_ml", "background", "area_cm2", "v0_unit", "v_add_unit", "verified_unit", "v_sample_unit", "bkg_unit",
+    "sigma_source", "baseline_window", "blank_replicates", "lod_k", "loq_k", "suitability_min", "plausible_max",
+    "include_baseline", "compare_baseline",
 )
 CV_FIELDS = ("scan_rate", "anodic_window", "cathodic_window", "baseline", "stability_tol")
 
 # fields whose value must be one of a fixed set (a hand-edited preset file may contain anything)
 ALLOWED = {
     "method": {"plateau", "drift"},
-    "sigma_source": {"baseline", "fit"},
-    "stock_unit": {"mM", "µM", "nM", "M"},
+    "sigma_source": {"baseline", "fit", "blank"},
+    "dilution_mode": {"concentration", "signal", "none"},
+    "stock_unit": {"mM", "µM", "nM", "M", "pM"},
+    "v0_unit": {"mL", "µL"}, "v_add_unit": {"mL", "µL"}, "verified_unit": {"mL", "µL"}, "v_sample_unit": {"mL", "µL"},
+    "bkg_unit": {"nA", "µA", "mA"},
     "baseline": {"none", "linear"},
 }
 
@@ -86,6 +91,10 @@ def _coerce(default: Any, value: Any) -> Any:
         if not isinstance(value, str):
             raise ValueError("expected text")
         return value
+    if isinstance(default, list):                         # a list of numbers (blank replicate currents)
+        if (isinstance(value, (list, tuple)) and all(isinstance(v, (int, float)) and not isinstance(v, bool) for v in value)):
+            return [float(v) for v in value]
+        raise ValueError("expected a list of numbers")
     if default is None:                                   # Optional[[lo, hi]] windows
         if value is None:
             return None
@@ -113,6 +122,10 @@ def apply_ca_preset(s: CAAnalysisSettings, preset: dict[str, Any]) -> list[str]:
     defaults = _defaults(CAAnalysisSettings)
     ignored = []
     sync_step_lists(s)
+    if "dilution_mode" not in preset and ("dilution_conc" in preset or "dilution_signal" in preset):
+        preset = dict(preset)                              # a preset saved before the dilution modes existed
+        preset["dilution_mode"] = ("concentration" if preset.get("dilution_conc", True)
+                                   else ("signal" if preset.get("dilution_signal", False) else "none"))
     # Volumes that were all still at the run's default were never customised, so they follow a
     # new default; individually edited volumes are kept (unless the preset brings a schedule).
     was_uniform = all(abs(v - s.v_add_ul) < 1e-12 for v in s.step_volumes_ul)

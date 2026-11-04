@@ -74,18 +74,31 @@ class CAAnalysisSettings:
     settle: float = 3.0                # s skipped after each step
     window: float = 5.0                # s of plateau averaged (end of each segment)
     end_guard: float = 0.5             # s excluded just before the next step
-    # additions
+    # additions.  Volumes and currents are always stored in mL, µL and µA; the *_unit fields only say how the
+    # window shows them (a unit selector converts the number on screen, never the stored quantity).
     stock_conc: float = 0.0
     stock_unit: str = "mM"
-    v0_ml: float = 0.0                 # initial cell volume
-    v_add_ul: float = 0.0              # default volume per addition (µL)
-    dilution_conc: bool = True         # include added volume in the cell volume
-    dilution_signal: bool = False      # scale signal by (V0+ΣV)/V0
-    v_sample_ml: float = 0.0           # 0 → same as V0 (sample not diluted)
-    background: float = 0.0            # µA subtracted from |I|
+    v0_ml: float = 0.0                 # total cell volume before any addition (sample + reagent)
+    v_add_ul: float = 0.0              # nominal volume per addition (µL)
+    verified_ul: float = 0.0           # volume per addition verified by a pipette check (µL); 0 = not checked
+    dilution_mode: str = "concentration"   # "concentration" | "signal" | "none": exactly one correction, never both
+    v_sample_ml: float = 0.0           # sample inside V0 (mL); 0 → same as V0 (sample not diluted)
+    background: float = 0.0            # µA subtracted from |I| (blank run at the same potential and time)
     area_cm2: float = 0.0
-    sigma_source: str = "baseline"     # "baseline" | "fit"
-    baseline_window: float = 10.0      # s before first step used for sigma
+    v0_unit: str = "mL"
+    v_add_unit: str = "µL"
+    verified_unit: str = "µL"
+    v_sample_unit: str = "mL"
+    bkg_unit: str = "µA"
+    # LOD / LOQ
+    sigma_source: str = "fit"          # "fit" (s(y/x)) | "baseline" (noise of one trace) | "blank" (SD of replicates)
+    baseline_window: float = 10.0      # s before first step used for the baseline noise
+    blank_replicates: list[float] = field(default_factory=list)   # µA: blank replicate currents (SD = σ_blank)
+    lod_k: float = 3.3                 # LOD = lod_k·σ/|b|
+    loq_k: float = 10.0                # LOQ = loq_k·σ/|b|
+    suitability_min: float = 12.0      # b·√Sxx / s(y) below this: the extrapolation is not trustworthy
+    plausible_max: float = 0.0         # largest believable sample concentration in the stock's unit; 0 = no check
+    compare_baseline: bool = False     # also show the result with the baseline point switched the other way
     # per-step data
     ignored_events: list[float] = field(default_factory=list)   # opposite-direction jumps (not additions)
     step_times: list[float] = field(default_factory=list)
@@ -99,6 +112,11 @@ class CAAnalysisSettings:
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> "CAAnalysisSettings":
+        d = dict(d)
+        if "dilution_mode" not in d and ("dilution_conc" in d or "dilution_signal" in d):
+            # older files had two switches that could both be on, which corrects the dilution twice; keep one
+            d["dilution_mode"] = ("concentration" if d.get("dilution_conc", True)
+                                  else ("signal" if d.get("dilution_signal", False) else "none"))
         known = {f.name for f in fields(cls)}
         return cls(**{k: v for k, v in d.items() if k in known})
 
@@ -117,6 +135,10 @@ class FitResult:
     residuals: np.ndarray
     x_intercept: float            # -intercept / slope
     x_intercept_se: float         # standard-addition uncertainty
+    sxx: float = float("nan")     # Σ(x - x̄)²
+    t_crit: float = float("nan")  # Student t(0.975, n - 2)
+    x_intercept_ci95: float = float("nan")   # t_crit · x_intercept_se
+    suitability: float = float("nan")        # |b|·√Sxx / s(y/x): how well the points pin the extrapolation
 
 
 @dataclass
@@ -142,6 +164,18 @@ class CAResult:
     c_x: float = float("nan")              # conc in the measured cell before additions
     c_x_se: float = float("nan")
     c_sample: float = float("nan")         # c_x × V0 / V_sample
+    x0: float = float("nan")               # signed x-intercept, -a/b (c_x = |x0|)
+    c_x_ci95: float = float("nan")         # half-width of the 95 % interval
+    c_sample_se: float = float("nan")
+    c_sample_ci95: float = float("nan")
+    suitability: float = float("nan")      # |b|·√Sxx / s(y/x)
+    sigmas: dict = field(default_factory=dict)    # µA by source: {"fit", "baseline", "blank"}
+    lods: dict = field(default_factory=dict)      # by the same keys, in the stock's unit
+    loqs: dict = field(default_factory=dict)
+    sigma_used: str = ""                   # the source behind ``sigma``
+    alt: Optional[dict] = None             # the fit with the baseline point switched the other way
+    n_expected: int = 0                    # additions + baseline point (if used)
+    volumes_ul: list = field(default_factory=list)   # volumes used per addition (verified ones replace nominal)
     warnings: list[str] = field(default_factory=list)
 
 
