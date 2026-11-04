@@ -34,7 +34,34 @@ Sizes are remembered between sessions (per user, not per project).
   *Reports*: analyst and institution on the cover, figure resolution (150–600 dpi), A4 / Letter; *Files*: recent projects, reset.
   Exports always use a white background with your plot style and palette.
 
-## Launch
+## Install (macOS, Windows, Debian/Ubuntu)
+
+Download the installer for your system from the [Releases](https://github.com/Wanghley/echem-analyzer/releases) page.
+`SHA256SUMS.txt` lets you verify the download (`shasum -a 256 -c SHA256SUMS.txt`).
+
+| System | File | Install |
+|---|---|---|
+| macOS, Apple silicon (M1 and later) | `Echem-Analyzer-<version>-macos-arm64.dmg` | open it and drag **Echem Analyzer** onto *Applications* |
+| macOS, Intel | `Echem-Analyzer-<version>-macos-x86_64.dmg` | the same |
+| Windows 10/11 (64-bit) | `Echem-Analyzer-<version>-windows-x64-setup.exe` | run it (no administrator needed; it can install for all users) |
+| Windows, no install | `Echem-Analyzer-<version>-windows-x64-portable.zip` | unzip and run `EchemAnalyzer.exe` |
+| Debian, Ubuntu and derivatives (64-bit) | `echem-analyzer_<version>_amd64.deb` | `sudo apt install ./echem-analyzer_<version>_amd64.deb` |
+
+Double-clicking a `.echemproj` project opens it in the app on all three systems. On Linux the program is `echem-analyzer`
+(and appears in the applications menu); remove it with `sudo apt remove echem-analyzer`. The Linux package is built on Ubuntu 22.04,
+so it needs Ubuntu 22.04 / Debian 12 or newer.
+
+**The installers are not signed**, so the first launch shows a warning that does not mean anything is wrong with the file:
+
+* **macOS:** *"cannot be opened because the developer cannot be verified"*. Control-click the app, choose **Open**, then **Open** again; or
+  on recent macOS open *System Settings ▸ Privacy & Security* and press **Open Anyway**; or run
+  `xattr -dr com.apple.quarantine "/Applications/Echem Analyzer.app"`.
+* **Windows:** *"Windows protected your PC"* (SmartScreen). Press **More info**, then **Run anyway**.
+
+To remove the warnings the release has to be signed (an Apple Developer ID plus notarization for macOS, a code-signing certificate for
+Windows); see *Building the installers* below.
+
+## Launch from the source
 
 Double-click **`run.command`**, or from a terminal:
 
@@ -129,17 +156,25 @@ moved aside as `presets.json.corrupt` instead of being overwritten.
 3. Fill in **Additions**: stock concentration, cell volume V₀, volume per addition. Individual volumes and concentrations are editable in the table.
 4. Read the headline tiles (sensitivity, C_x, LOD, R²) and the **Results** card, plus the calibration plot and residuals.
 
-* **Added concentration:** `C = C_s·ΣV / (V₀ + ΣV)` with dilution correction (switchable), else `C_s·ΣV / V₀`.
-* **Signal:** polarity-corrected plateau `|i|` minus an optional background, optionally scaled by `(V₀+ΣV)/V₀`.
-* **Response per addition:** *plateau mean* (last W s before the next addition) or *drift-corrected* (pre/post straight
-  lines extrapolated to the step time). **The two can give materially different slopes on real data.**
-* **Fit:** least squares of signal vs added concentration, baseline point included (switchable).
-  **C_x** = intercept / slope with the usual regression uncertainty. **LOD / LOQ** = 3σ/S, 10σ/S.
+* **Inputs, each with a unit selector** (a selector converts what is shown, never the quantity): stock concentration, V₀ (total cell volume),
+  sample volume (V₀/2 for a 1:1 mix), volume per addition and the pipette-**verified volume**, background current, electrode area (reporting only).
+* **Added concentration:** `C_n = c_s·n·v / (V₀ + n·v)`. **One dilution correction only** (*Dilution*): *concentration* (this formula),
+  *signal scaling* (`x = c_s·ΣV/V₀`, signal × `(V₀+ΣV)/V₀`, which is exact, also for the sample's own dilution) or *none*; never both.
+* **Signal:** polarity-corrected plateau `|i|` minus the background.
+* **Response per addition:** *plateau mean* (settle time, averaging window, end guard) or *drift-corrected*. **The two can give
+  materially different slopes on real data.**
+* **Fit:** `y = a + b·x`, baseline point included or not (or both, side by side). `x₀ = −a/b`, **C_x = |x₀|**, **C_sample = C_x·V₀/V_sample**, with the
+  95 % interval `t(0.975, N−2)·s_x0`, `s_x0 = (s_y/|b|)·√(1/N + ȳ²/(b²·Sxx))`, and the **suitability** `b·√Sxx/s_y` (flagged below 12 by default).
+* **LOD = 3.3σ/|b|, LOQ = 10σ/|b|** (factors adjustable); σ from the residual s(y/x) (default), the baseline noise or the SD of blank
+  replicates, all three always listed.
+* **Warnings** (never blocking): zero background, sample volume above V₀, dilution off or double, an implausible result for the stock unit,
+  patterned residuals, failed suitability, baseline-noise LOD far below the s(y/x) LOD, a point count that does not match the additions,
+  settle + window longer than a segment. All settings, units included, are saved in presets and projects.
 * **Step detection:** a peak of the lagged difference of the median-filtered trace, above `k` robust σ and *abrupt*
   (≥ 25 % of its change between two consecutive samples), so smooth decays are not mistaken for additions.
   Jumps in the *opposite* direction are never dropped silently: they are drawn as a dotted grey `!` line and reported,
   because they corrupt the plateau of the segment they fall in.
-* A background of 0 µA means C_x includes the non-analyte current of the baseline. Enter a blank value to correct it.
+* A background of 0 µA shifts C_x by background / slope: measure a blank at the same potential and time and enter it.
 
 ## CV with several cycles
 
@@ -181,12 +216,56 @@ To release:
 
 1. Bump `__version__`; move the *Unreleased* notes in `CHANGELOG.md` under `## [X.Y.Z] - YYYY-MM-DD` (and add the link at the bottom).
 2. Commit both: `git commit -am "chore(release): X.Y.Z"`.
-3. `scripts/release.sh X.Y.Z --push`: it checks you are on a clean `main`, that the version and the changelog agree and that the tag is new,
+3. `scripts/release.sh X.Y.Z --push`: pushing the tag also starts the installer build and the GitHub Release (see *Building the installers*). It checks you are on a clean `main`, that the version and the changelog agree and that the tag is new,
    runs the tests, creates the annotated tag with the changelog section as its message and pushes `main` and that tag.
    Without `--push` it only tags; the commit to publish is printed.
 
 Commit messages follow [Conventional Commits](https://www.conventionalcommits.org/): `feat` (minor bump), `fix` (patch), `feat!` or a
 `BREAKING CHANGE:` footer (major), and `docs`, `test`, `chore`, `build`, `refactor` for the rest.
+
+## Building the installers
+
+The installers are built with [PyInstaller](https://pyinstaller.org) by one script that is used both on your machine and in CI:
+
+```sh
+uv sync --group build
+uv run python packaging/build.py                # freeze, smoke-test the frozen app, make this system's installer in dist/release/
+uv run python packaging/build.py --no-installer # only freeze and smoke-test (about a minute)
+```
+
+PyInstaller cannot cross-compile, so each installer is built on its own system: that is what the GitHub Actions workflow does.
+What the script produces: a `.dmg` on macOS (`hdiutil`), the Inno Setup installer and a portable zip on Windows (the installer needs
+[Inno Setup](https://jrsoftware.org/isdl.php); without it only the zip is made), and a `.deb` on Linux (`dpkg-deb`).
+The frozen app is smoke-tested before it is packaged: `--version`, then `--selftest`, which analyses a synthetic calibration, writes a PDF,
+an Excel workbook and a project, reads the project back and draws every tab, all without a display
+(`QT_QPA_PLATFORM=offscreen echem-analyzer --selftest`). A missing library or plugin therefore fails the build, not the user.
+
+Files: `packaging/echem-analyzer.spec` (what goes into the bundle), `packaging/build.py` (the build), `packaging/windows/echem-analyzer.iss`
+(the Windows installer), `assets/` (the icon; `uv run python packaging/make_icons.py` regenerates the PNG, ICO and ICNS from `icon.svg`).
+
+### Releasing with GitHub Actions
+
+`.github/workflows/ci.yml` runs the tests on every push and pull request. `.github/workflows/release.yml` builds and publishes:
+
+1. Bump `__version__`, update `CHANGELOG.md`, commit (see *Versioning and releases*), then `scripts/release.sh X.Y.Z --push`.
+2. The pushed tag `vX.Y.Z` starts the workflow. It checks that the tag equals the version and that the changelog has a section for it,
+   runs the tests, then builds on four GitHub runners (macOS Apple silicon, macOS Intel, Windows, Ubuntu 22.04), smoke-tests every
+   package (the `.deb` is installed with `apt`, the Windows installer is run silently, and the installed program's self-test must pass)
+   and uploads the installers.
+3. If all builds pass, the **release** job (the only one allowed to write to the repository) creates the GitHub Release with the changelog
+   section as its notes, the installers and `SHA256SUMS.txt`.
+
+To try the builds without releasing anything, open *Actions ▸ Release ▸ Run workflow*: the installers are kept as downloadable build
+artifacts for 14 days and no release is made. Do this once before the first real tag.
+
+Runner names change over time (`macos-15-intel`, `ubuntu-22.04`, …); if a job fails to start, check GitHub's list of hosted runners.
+Dependabot (`.github/dependabot.yml`) proposes updates to the action versions.
+
+**Signing.** macOS: enrol in the Apple Developer Program, create a *Developer ID Application* certificate, and add signing and
+`notarytool` notarization steps to the macOS jobs (secrets: the certificate as base64 and its password, an app-specific password, the
+team id). Windows: buy a code-signing certificate (or use Azure Trusted Signing) and sign the installer and `EchemAnalyzer.exe` with
+`signtool` before packaging. Neither is set up here: the macOS app is only ad-hoc signed (the default of PyInstaller), the Windows
+installer is unsigned.
 
 ## Tests
 
