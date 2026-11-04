@@ -171,6 +171,23 @@ The **Voltammetry** tab has two parts.
 Overlays CA traces and calibrations of several runs with a summary table. By default only runs that look like a staircase
 and are not duplicates (the same run is often in both the `.csv` and the `.pssession`) are ticked.
 
+## Versioning and releases
+
+Versions follow [Semantic Versioning](https://semver.org/) (`MAJOR.MINOR.PATCH`); every release is an annotated git tag `vX.Y.Z`, and
+[CHANGELOG.md](CHANGELOG.md) says what changed. The version lives in one place, `__version__` in `echem_analyzer/__init__.py`;
+`python -m echem_analyzer --version` prints it and the Help ▸ About box, reports and projects record it.
+
+To release:
+
+1. Bump `__version__`; move the *Unreleased* notes in `CHANGELOG.md` under `## [X.Y.Z] - YYYY-MM-DD` (and add the link at the bottom).
+2. Commit both: `git commit -am "chore(release): X.Y.Z"`.
+3. `scripts/release.sh X.Y.Z --push`: it checks you are on a clean `main`, that the version and the changelog agree and that the tag is new,
+   runs the tests, creates the annotated tag with the changelog section as its message and pushes `main` and that tag.
+   Without `--push` it only tags; the commit to publish is printed.
+
+Commit messages follow [Conventional Commits](https://www.conventionalcommits.org/): `feat` (minor bump), `fix` (patch), `feat!` or a
+`BREAKING CHANGE:` footer (major), and `docs`, `test`, `chore`, `build`, `refactor` for the rest.
+
 ## Tests
 
 ```sh
