@@ -17,6 +17,11 @@ dependencies = [
 dev = [
     "openpyxl>=3.1",
     "pytest>=8",
+    "pyyaml>=6",                # the workflow files are checked by a test
+]
+# only needed to build the installers (see packaging/): `uv sync --group build`
+build = [
+    "pyinstaller>=6.10",
 ]
 
 [build-system]

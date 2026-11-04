@@ -47,7 +47,7 @@ echo "release: created $TAG on $(git rev-parse --short HEAD)"
 
 if [[ $PUSH -eq 1 ]]; then
   git push origin main "$TAG"
-  echo "release: pushed main and $TAG"
+  echo "release: pushed main and $TAG: GitHub Actions now builds the installers and publishes the release"
 else
   echo "release: not pushed. To publish:  git push origin main $TAG"
 fi

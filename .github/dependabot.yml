@@ -1,0 +1,7 @@
+version: 2
+updates:
+  # keeps the actions used by the workflows current (and shows when a pinned major version is outdated)
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "monthly"
