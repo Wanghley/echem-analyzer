@@ -5,9 +5,13 @@ import sys
 
 
 def main(argv: list[str] | None = None) -> int:
+    argv = list(sys.argv if argv is None else argv)
+    if len(argv) > 1 and argv[1] in ("--version", "-V"):
+        from . import __version__
+        print(f"echem-analyzer {__version__}")                   # before any Qt import: works headless, for bug reports
+        return 0
     from PySide6.QtWidgets import QApplication
 
-    argv = list(sys.argv if argv is None else argv)
     app = QApplication(argv)
     app.setApplicationName("Echem Analyzer")
     app.setOrganizationName("EchemAnalyzer")
