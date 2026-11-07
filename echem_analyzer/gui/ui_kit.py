@@ -197,6 +197,41 @@ class KpiCard(Card):
         self.value.setStyleSheet(f"color: {getattr(p, color)};" if color else "")
 
 
+class ElidedLabel(QLabel):
+    """A label that cuts long text with an ellipsis instead of widening its layout (paths, long names).
+
+    ``text()`` and ``full_text()`` are the whole string; ``elided_text()`` is what is drawn. Put the full text in a tooltip
+    on the widget that holds the label."""
+
+    def __init__(self, text: str = "", mode: Qt.TextElideMode = Qt.ElideMiddle, parent: Optional[QWidget] = None):
+        super().__init__(parent)
+        self._full, self._mode = text, mode
+        self.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)         # its width comes from the layout, not from the text
+        self.setMinimumWidth(12)
+        self._apply()
+
+    def text(self) -> str:
+        return self._full
+
+    full_text = text
+
+    def elided_text(self) -> str:
+        return QLabel.text(self)
+
+    def setText(self, text: str) -> None:  # noqa: N802
+        self._full = text
+        self._apply()
+
+    set_full_text = setText
+
+    def resizeEvent(self, e) -> None:  # noqa: N802
+        super().resizeEvent(e)
+        self._apply()
+
+    def _apply(self) -> None:
+        QLabel.setText(self, self.fontMetrics().elidedText(self._full, self._mode, max(self.width(), 12)))
+
+
 class Badge(QLabel):
     def __init__(self, text: str = "", tone: str = "neutral", parent: Optional[QWidget] = None):
         super().__init__(text, parent)
