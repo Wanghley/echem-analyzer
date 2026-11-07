@@ -41,6 +41,9 @@ SCHEMA: dict[str, Pref] = {p.key: p for p in (
     Pref("conc_unit", "µM", "choice", ("M", "mM", "µM", "nM", "pM", "fM")),
     Pref("recent_limit", 5, "int", lo=1, hi=12),
     Pref("support_popup", True, "bool"),         # the "buy me a coffee" card that slides in at startup
+    Pref("update_check", True, "bool"),          # look for a newer release on GitHub when the app starts (at most once a day)
+    Pref("last_update_check", 0.0, "float", lo=0.0, hi=4e9),     # Unix time of the last successful check
+    Pref("update_seen", "", "text"),             # the newest version found, kept so the "update available" hint survives a restart
 )}
 DEFAULTS: dict[str, Any] = {k: p.default for k, p in SCHEMA.items()}
 
