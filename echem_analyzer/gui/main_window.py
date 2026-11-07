@@ -102,6 +102,7 @@ class MainWindow(QMainWindow):
         self.statusBar().addPermanentWidget(self.count_label)
         self.session.files_changed.connect(self._on_files_changed)
         self.session.project_changed.connect(self._update_title)
+        self.session.project_changed.connect(self._populate_recent_menu)
         theme.bus.changed.connect(self._on_theme_changed)
         self._on_files_changed()
         self._update_title()
@@ -165,6 +166,7 @@ class MainWindow(QMainWindow):
         self.act_open = self._action(m, "Open project…", self.open_project_dialog, QKeySequence.Open)
         self.recent_menu = m.addMenu("Open recent")
         self.recent_menu.aboutToShow.connect(self._populate_recent_menu)
+        self._populate_recent_menu()                                       # filled already: a native menu bar may not ask first
         self.act_save = self._action(m, "Save project", self.save_project, QKeySequence.Save)
         self._action(m, "Save project as…", self.save_project_as, QKeySequence.SaveAs)
         self._action(m, "Project info…", self.edit_project_info)
@@ -398,16 +400,25 @@ class MainWindow(QMainWindow):
                                  f"{plural(n_meas, 'measurement')}   ")
 
     def _populate_recent_menu(self) -> None:
+        """File ▸ Open recent: the most recent projects (as many as Settings allows), then Clear menu."""
+        for old_action in self.recent_menu.actions():
+            old_action.deleteLater()                                       # clear() only unhooks them: free them too
         self.recent_menu.clear()
-        recents = self.session.recent_projects()
+        recents = self.session.recent_projects()[:prefs.get("recent_limit")]
         if not recents:
             self.recent_menu.addAction("No recent projects").setEnabled(False)
             return
         for p in recents:
             a = QAction(Path(p).name, self)
             a.setToolTip(p)
+            a.setStatusTip(p)
+            a.setData(p)                                                   # the project this entry opens
             a.triggered.connect(lambda _c=False, path=p: self.open_project_from(path))
             self.recent_menu.addAction(a)
+        self.recent_menu.addSeparator()
+        clear = QAction("Clear menu", self)
+        clear.triggered.connect(lambda _c=False: (self.session.clear_recent_projects(), self._populate_recent_menu()))
+        self.recent_menu.addAction(clear)
 
     # ================================================================== project workflow
     def ui_state(self) -> dict:

@@ -176,6 +176,9 @@ class Session(QObject):
         items = [v] if isinstance(v, str) else list(v or [])
         return [p for p in items if Path(p).is_file()]
 
+    def clear_recent_projects(self) -> None:
+        self.qs.remove("recentProjects")
+
     def _remember_recent(self, path: Path) -> None:
         items = [str(path)] + [p for p in self.recent_projects() if p != str(path)]
         self.qs.setValue("recentProjects", items[:MAX_RECENT])

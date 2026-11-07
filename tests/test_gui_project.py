@@ -447,7 +447,7 @@ def test_recent_projects_menu(qapp, workdir, tmp_path):
     p1.unlink()
     assert win.session.recent_projects() == [str(p2)]                                  # vanished files drop out
     win._populate_recent_menu()
-    assert [a.text() for a in win.recent_menu.actions()] == [p2.name]
+    assert [a.text() for a in win.recent_menu.actions() if a.data()] == [p2.name]
 
 
 def test_project_info_dialog_and_title(qapp, workdir, tmp_path):
