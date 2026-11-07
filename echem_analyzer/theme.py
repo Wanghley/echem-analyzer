@@ -16,6 +16,7 @@ from PySide6.QtGui import QColor, QIcon, QPainter, QPalette, QPixmap
 from PySide6.QtSvg import QSvgRenderer
 from PySide6.QtWidgets import QApplication, QStyleFactory
 
+from .about import COFFEE_BG, COFFEE_BG_HOVER, COFFEE_FG
 from .palette import DARK, LIGHT, MODES, PALETTES, Palette, apply_mpl, mpl_rc, report_palette, styled  # noqa: F401 (re-exported)
 from .prefs import prefs
 
@@ -214,6 +215,34 @@ QPushButton[primary="true"]:disabled {{ background: {p.surface2}; color: {p.fain
 QPushButton[flat="true"] {{ background: transparent; border: 1px solid transparent; color: {p.accent}; }}
 QPushButton[flat="true"]:hover {{ background: {p.accent_soft}; }}
 
+/* ---- support: the coffee button, link chips, the support card and the About window ---- */
+QPushButton#Coffee {{ background: {COFFEE_BG}; color: {COFFEE_FG}; border: 1px solid #E3C400; border-radius: 17px;
+                      padding: 7px 18px 7px 14px; font-weight: 650; }}
+QPushButton#Coffee:hover {{ background: {COFFEE_BG_HOVER}; border-color: #E3C400; }}
+QPushButton#Coffee:pressed {{ background: #F2CF00; }}
+QPushButton#Coffee[compact="true"] {{ padding: 4px 13px 4px 10px; border-radius: 15px; font-size: 12px; }}
+QPushButton#Chip {{ background: {p.surface}; color: {p.text}; border: 1px solid {p.border_strong}; border-radius: 14px;
+                    padding: 6px 14px 6px 10px; font-weight: 500; }}
+QPushButton#Chip:hover {{ background: {p.accent_soft}; border-color: {p.accent}; color: {p.accent}; }}
+QPushButton#IconLink {{ background: transparent; border: 1px solid transparent; border-radius: 14px; padding: 5px; }}
+QPushButton#IconLink:hover {{ background: {p.accent_soft}; border-color: {p.border}; }}
+QPushButton#CloseX {{ background: transparent; border: none; border-radius: 11px; padding: 3px; }}
+QPushButton#CloseX:hover {{ background: {p.surface2}; }}
+QFrame#SupportCard {{ background: {p.surface}; border: 1px solid {p.border_strong}; border-radius: 16px; }}
+QFrame#SupportCard QLabel {{ background: transparent; }}
+QLabel#SupportTitle {{ font-size: 14px; font-weight: 700; color: {p.text}; }}
+QLabel#SupportText {{ font-size: 12px; color: {p.muted}; }}
+QFrame#SupportCard QLabel#CoffeeChip {{ background: {COFFEE_BG}; border-radius: 14px; }}
+QPushButton#QuietLink {{ background: transparent; border: none; color: {p.muted}; font-size: 11px; padding: 2px 4px; }}
+QPushButton#QuietLink:hover {{ color: {p.text}; text-decoration: underline; background: transparent; }}
+QLabel#HeroLogo {{ background: rgba(255, 255, 255, 34); border: 1px solid rgba(255, 255, 255, 64); border-radius: 24px; }}
+QLabel#HeroTitle {{ color: #FFFFFF; font-size: 27px; font-weight: 750; background: transparent; }}
+QLabel#HeroSub {{ color: rgba(255, 255, 255, 215); font-size: 12.5px; background: transparent; }}
+QLabel#HeroBadge {{ color: #FFFFFF; background: rgba(255, 255, 255, 38); border: 1px solid rgba(255, 255, 255, 70);
+                    border-radius: 10px; padding: 2px 10px; font-size: 11px; font-weight: 650; }}
+QLabel#AuthorName {{ font-size: 17px; font-weight: 700; color: {p.text}; background: transparent; }}
+QLabel#AuthorRole {{ font-size: 12px; color: {p.muted}; background: transparent; }}
+
 /* ---- form controls ---- */
 QComboBox, QSpinBox, QDoubleSpinBox {{ background: {p.surface}; color: {p.text}; border: 1px solid {p.border_strong};
                                        border-radius: 7px; padding: 3px 9px; min-height: 20px;
@@ -337,6 +366,13 @@ _SVG = {
     "home": '<path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/>',
     "x-circle": '<circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/>',
     "image": '<rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="M21 15l-3.1-3.1a2 2 0 0 0-2.8 0L6 21"/>',
+    "globe": '<circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>',
+    "github": '<path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"/>',
+    "linkedin": '<path d="M16 8a6 6 0 0 1 6 6v7h-4v-7a2 2 0 0 0-2-2 2 2 0 0 0-2 2v7h-4v-7a6 6 0 0 1 6-6z"/><rect x="2" y="9" width="4" height="12"/><circle cx="4" cy="4" r="2"/>',
+    "instagram": '<rect x="2" y="2" width="20" height="20" rx="5" ry="5"/><path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"/><line x1="17.5" y1="6.5" x2="17.51" y2="6.5"/>',
+    "coffee": '<path d="M18 8h1a4 4 0 0 1 0 8h-1"/><path d="M2 8h16v9a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4V8z"/><line x1="6" y1="1" x2="6" y2="4"/><line x1="10" y1="1" x2="10" y2="4"/><line x1="14" y1="1" x2="14" y2="4"/>',
+    "external-link": '<path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/>',
+    "x": '<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>',
     "chevron-down": '<polyline points="6 9 12 15 18 9"/>',
     "chevron-up": '<polyline points="6 15 12 9 18 15"/>',
 }

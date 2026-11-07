@@ -40,6 +40,7 @@ SCHEMA: dict[str, Pref] = {p.key: p for p in (
     Pref("lod_k", 3.0, "float", lo=1.0, hi=10.0),
     Pref("conc_unit", "µM", "choice", ("M", "mM", "µM", "nM", "pM", "fM")),
     Pref("recent_limit", 5, "int", lo=1, hi=12),
+    Pref("support_popup", True, "bool"),         # the "buy me a coffee" card that slides in at startup
 )}
 DEFAULTS: dict[str, Any] = {k: p.default for k, p in SCHEMA.items()}
 
