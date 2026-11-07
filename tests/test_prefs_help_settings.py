@@ -224,9 +224,14 @@ def test_settings_window_changes_everything_it_promises(qapp, tmp_path):
     assert prefs.get("operator") == "Ada Lovelace" and Prefs(prefs.path).get("institution") == "Rice University"     # saved to disk
 
     assert win.new_project() and win.session.meta.operator == "Ada Lovelace"                  # used for new projects
-    win.stack.setCurrentIndex(0)
-    win.welcome.set_recents(["/a/1.echemproj", "/a/2.echemproj", "/a/3.echemproj", "/a/4.echemproj"])
-    assert win.welcome.recent_box.count() == 3
+    projects = []
+    for i in range(4):
+        f = tmp_path / f"p{i}.echemproj"
+        f.write_text("x")
+        projects.append(str(f))
+    win.session.qs.setValue("recentProjects", projects)
+    win._populate_recent_menu()
+    assert len([a for a in win.recent_menu.actions() if a.data()]) == 3                    # File > Open recent obeys the limit
 
     s.theme_box.setCurrentIndex(s.theme_box.findData("light"))
     s.close()

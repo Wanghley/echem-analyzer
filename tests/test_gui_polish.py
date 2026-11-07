@@ -58,14 +58,14 @@ def test_loading_behind_the_welcome_page_draws_every_plot(qapp, workdir, tmp_pat
     assert win.ca_tab.ca_plot.canvas.width() > 300                    # a real size once it is shown
 
 
-def test_recent_projects_appear_on_the_welcome_page(qapp, workdir, tmp_path):
+def test_recent_projects_appear_in_the_file_menu(qapp, workdir, tmp_path):
     a = make_window(tmp_path / "a")
     a.load_paths([workdir / B2_CSV])
     proj = tmp_path / f"recent{SUFFIX}"
     a.save_project_to(proj)
     b = make_window(tmp_path / "a")                                    # same settings -> same recents
-    assert b.welcome.recent_card.isVisibleTo(b.welcome) and b.welcome.recent_box.count() == 1
-    assert b.welcome.recent_box.itemAt(0).widget().toolTip() == str(proj)
+    entries = [x for x in b.recent_menu.actions() if x.data()]      # filled already, without opening the menu
+    assert len(entries) == 1 and entries[0].toolTip() == str(proj)
 
 
 def test_toolbar_shows_project_name_and_unsaved_marker(qapp, workdir, tmp_path):

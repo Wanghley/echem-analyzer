@@ -82,7 +82,6 @@ class MainWindow(QMainWindow):
         self.welcome.open_project.connect(self.open_project_dialog)
         self.welcome.add_files.connect(self.open_files)
         self.welcome.add_folder.connect(self.open_folder)
-        self.welcome.open_recent.connect(self.open_project_from)
         self.welcome.open_help.connect(self.show_help)
         self.welcome.open_settings.connect(self.show_settings)
         self.welcome.return_to_project.connect(self.show_work)
@@ -385,7 +384,6 @@ class MainWindow(QMainWindow):
             self.files_dock.hide()                 # nothing to list yet: let the welcome page breathe
         elif was_welcome:
             self.files_dock.show()
-        self.welcome.set_recents(self.session.recent_projects())
         self.welcome.set_current(None)             # a page change caused by loading or clearing data never shows "return"
         self.tb_home.setEnabled(has)
         self.act_home.setEnabled(has)

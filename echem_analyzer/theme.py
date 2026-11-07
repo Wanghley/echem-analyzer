@@ -181,13 +181,8 @@ QLabel#Notice[tone="neutral"] {{ background: {p.surface2}; color: {p.muted}; }}
 /* ---- welcome page ---- */
 QLabel#WelcomeTitle {{ font-size: 28px; font-weight: 700; color: {p.text}; }}
 QLabel#WelcomeSub {{ font-size: 13px; color: {p.muted}; }}
-QLabel#DropZone {{ border: 1.5px dashed {p.border_strong}; border-radius: 14px; color: {p.muted}; padding: 22px; }}
-QPushButton#RecentItem {{ text-align: left; border: 1px solid transparent; background: transparent; padding: 8px 10px; }}
-QPushButton#RecentItem:hover {{ background: {p.surface2}; border-color: {p.border}; }}
 QPushButton#Tile {{ background: {p.surface}; border: 1px solid {p.border}; border-radius: 12px; text-align: left; padding: 0; }}
 QPushButton#Tile:hover {{ background: {p.accent_soft}; border-color: {p.accent}; }}
-QLabel#TileTitle {{ font-size: 13px; font-weight: 700; color: {p.text}; background: transparent; }}
-QLabel#TileSub {{ font-size: 11px; color: {p.muted}; background: transparent; }}
 QPushButton#LinkButton {{ background: transparent; border: none; color: {p.accent}; padding: 4px 8px; }}
 QPushButton#LinkButton:hover {{ text-decoration: underline; background: transparent; }}
 
@@ -243,6 +238,30 @@ QLabel#HeroBadge {{ color: #FFFFFF; background: rgba(255, 255, 255, 38); border:
 QLabel#AuthorName {{ font-size: 17px; font-weight: 700; color: {p.text}; background: transparent; }}
 QLabel#AuthorRole {{ font-size: 12px; color: {p.muted}; background: transparent; }}
 
+/* ---- start page ---- */
+QPushButton#ActionRow {{ background: {p.surface}; border: 1px solid {p.border}; border-radius: 12px; text-align: left; padding: 0; }}
+QPushButton#ActionRow:hover {{ background: {p.accent_soft}; border-color: {p.accent}; }}
+QPushButton#ActionRow[primary="true"] {{ background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 {primary_top}, stop:1 {primary_bottom});
+                                         border-color: {primary_bottom}; }}
+QPushButton#ActionRow[primary="true"]:hover {{ background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 {primary_hover_top}, stop:1 {primary_hover_bottom});
+                                               border-color: {primary_bottom}; }}
+QLabel#ActionIcon {{ background: {p.accent_soft}; border-radius: 10px; }}
+QPushButton#ActionRow[primary="true"] QLabel#ActionIcon {{ background: rgba(255, 255, 255, 46); }}
+QLabel#ActionTitle {{ font-size: 13.5px; font-weight: 650; color: {p.text}; background: transparent; }}
+QLabel#ActionSub {{ font-size: 11.5px; color: {p.muted}; background: transparent; }}
+QPushButton#ActionRow[primary="true"] QLabel#ActionTitle {{ color: {p.accent_text}; }}
+QPushButton#ActionRow[primary="true"] QLabel#ActionSub {{ color: {p.accent_text}; }}
+QLabel#KeyCap {{ background: {p.surface2}; border: 1px solid {p.border}; border-radius: 6px; padding: 1px 7px; color: {p.muted};
+                 font-size: 11px; font-weight: 600; }}
+QPushButton#ActionRow[primary="true"] QLabel#KeyCap {{ background: rgba(255, 255, 255, 40); border-color: rgba(255, 255, 255, 70);
+                                                       color: {p.accent_text}; }}
+QLabel#SectionLabel {{ color: {p.faint}; font-size: 10.5px; font-weight: 700; }}
+QLabel#VersionTag {{ color: {p.faint}; font-size: 11px; font-weight: 600; }}
+QLabel#DropHint {{ color: {p.faint}; font-size: 12px; }}
+QLabel#TileGlyph {{ background: transparent; }}
+QLabel#TileName {{ font-size: 12.5px; font-weight: 600; color: {p.text}; background: transparent; }}
+QFrame#PageFooter {{ background: {p.surface}; border: none; border-top: 1px solid {p.border}; }}
+QFrame#PageFooter QLabel {{ background: transparent; }}
 QLabel#Signature {{ color: {p.muted}; font-size: 12px; background: transparent; }}
 /* ---- updates and version information (About) ---- */
 QFrame#Card QLabel#UpdateChip[tone="neutral"] {{ background: {p.surface2}; border-radius: 18px; }}
