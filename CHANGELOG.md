@@ -5,6 +5,10 @@ uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`, tagged `vM
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-11-06
+
+A quieter start page, an About window with self-updating, and a new README.
+
 ### Added
 - **Updates:** the About window has an **Updates** card (and *Help ▸ Check for updates…* starts it): it finds the newest GitHub release, shows
   its notes, downloads the installer for this system, verifies it against `SHA256SUMS.txt`, and installs it and reopens the app. Unsaved work is
@@ -96,6 +100,7 @@ First tagged release: the platform for sensor electrochemistry beyond standard a
 - 0.2: multi-cycle CV analysis, saveable projects and named presets.
 - 0.1: chronoamperometry standard addition with LOD and LOQ, and comparison of runs.
 
-[Unreleased]: https://github.com/Wanghley/echem-analyzer/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/Wanghley/echem-analyzer/compare/v0.5.1...HEAD
+[0.5.1]: https://github.com/Wanghley/echem-analyzer/releases/tag/v0.5.1
 [0.5.0]: https://github.com/Wanghley/echem-analyzer/releases/tag/v0.5.0
 [0.4.0]: https://github.com/Wanghley/echem-analyzer/releases/tag/v0.4.0
