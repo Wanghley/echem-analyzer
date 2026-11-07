@@ -392,8 +392,10 @@ class MainWindow(QMainWindow):
             a.setEnabled(has)
         self.export_btn.setEnabled(has)
         n_ca, n_cv = len(self.session.ca_curves()), len(self.session.cv_runs())
-        self.count_label.setText(f"{len(self.session.files)} files  ·  {n_ca} CA runs  ·  {n_cv} CV runs  ·  "
-                                 f"{len(self.session.all_curves())} measurements   ")
+        n_files, n_meas = len(self.session.files), len(self.session.all_curves())
+        plural = lambda n, word: f"{n} {word}{'' if n == 1 else 's'}"            # noqa: E731
+        self.count_label.setText(f"{plural(n_files, 'file')}  ·  {plural(n_ca, 'CA run')}  ·  {plural(n_cv, 'CV run')}  ·  "
+                                 f"{plural(n_meas, 'measurement')}   ")
 
     def _populate_recent_menu(self) -> None:
         self.recent_menu.clear()
