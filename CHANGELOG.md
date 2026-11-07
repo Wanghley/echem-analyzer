@@ -5,6 +5,34 @@ uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`, tagged `vM
 
 ## [Unreleased]
 
+### Added
+- **Updates:** the About window has an **Updates** card (and *Help ▸ Check for updates…* starts it): it finds the newest GitHub release, shows
+  its notes, downloads the installer for this system, verifies it against `SHA256SUMS.txt`, and installs it and reopens the app. Unsaved work is
+  asked about first; if the install fails the old version is started again. Installed macOS apps, the Windows installer version and the
+  Debian/Ubuntu package update themselves; the Windows portable zip and a run from source are pointed to the release page. A toolbar badge and a
+  notice on the start page announce an update. The app looks once a day at startup (switch off in *Settings ▸ Files and storage*), contacts
+  github.com only and sends nothing but its version.
+- **About window** (*Help ▸ About*): a banner, version information (app, installation type, system, Python, PySide6, Qt, location) with a
+  *Copy details* button, the author with links (website, GitHub, LinkedIn, Instagram), a support section and the methods text (folded away).
+- **Buy me a coffee**: a button that is always in the toolbar. It opens a small card with the link, which also slides in once at startup.
+  *Maybe later* closes it; *Don't show this at startup* (or *Settings ▸ Files and storage*) turns the startup card off; the button stays.
+- **Signature:** *Made with 💙 by Wanghley Soares Martins* in the start-page footer and the About window.
+- **File ▸ Open recent** is kept up to date, follows the *recent projects shown* setting and has a *Clear menu* entry.
+- The package metadata names the author and carries the project, homepage and funding links.
+- Documentation: a new README (screenshots, install, quick start) and `docs/` with the user guide, the analysis methods and the development guide.
+
+### Changed
+- **The start page is now minimal**: one centred column (name, version, update notice, three ways in with their shortcuts, a row of topics,
+  help links) and a footer that stays in view. Recent projects moved to *File ▸ Open recent*.
+- **The left panel is the project**: it is titled *Project* and shows the project's name, an unsaved marker, where it is saved and its files; the
+  name and path moved there from the toolbar.
+- Form controls (drop-downs, spin boxes, sliders, progress bars) now follow the theme, with crisp arrows; primary buttons have a gentle gradient
+  and a disabled state; the toolbar separators are light lines instead of black ones.
+
+### Fixed
+- The folded-section headers (*Advanced…*) are left-aligned, as intended, instead of centred.
+- The status bar says "1 file" and "1 CV run" instead of "1 files" and "1 CV runs".
+
 ## [0.5.0] - 2026-11-04
 
 A more rigorous standard-addition analysis, and the first installers for macOS, Windows and Debian/Ubuntu.
