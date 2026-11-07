@@ -54,6 +54,7 @@ def main(argv: list[str] | None = None) -> int:
     app.window = win
     win.show()
     win.schedule_support_popup()                       # only here: tests and --selftest never see the card
+    win.schedule_update_check()                        # ... and never touch the network
     paths = list(argv[1:]) + app.pending
     if paths:
         win.load_paths(paths)

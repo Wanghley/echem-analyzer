@@ -9,10 +9,10 @@ from PySide6.QtCore import QSize, Qt, QTimer, QUrl
 from PySide6.QtGui import QAction, QActionGroup, QDesktopServices, QIcon, QKeySequence
 from PySide6.QtWidgets import (
     QApplication, QDockWidget, QFileDialog, QFrame, QHBoxLayout, QLabel, QMainWindow, QMenu, QMessageBox, QSizePolicy,
-    QStackedWidget, QTabWidget, QToolBar, QToolButton, QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget,
+    QPushButton, QStackedWidget, QTabWidget, QToolBar, QToolButton, QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget,
 )
 
-from .. import __version__, about, theme
+from .. import about, theme
 from ..models import KIND_CA, KIND_CV
 from ..prefs import prefs
 from ..project import SUFFIX, ProjectError, collect_results, load_project
@@ -26,6 +26,7 @@ from .compare_tab import CompareTab
 from .cv_tab import CVTab
 from .electrode_tab import ElectrodeTab
 from .help_dialog import HelpDialog
+from .about_dialog import AboutDialog
 from .import_dialog import ImportDialog
 from .measurements_tab import MeasurementsTab
 from .project_dialog import ProjectInfoDialog
@@ -33,6 +34,7 @@ from .settings_dialog import SettingsDialog
 from .session import Session, curve_short_label
 from .study_tab import StudyTab
 from .support import SupportCard, coffee_button, open_link
+from .update_manager import UpdateManager
 from .welcome import WelcomePage
 
 FILTER = "PalmSens exports (*.csv *.pssession);;All files (*)"
@@ -57,6 +59,7 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.setAcceptDrops(True)
         self.session = session or Session()
+        self.updates = UpdateManager(self)
         app = QApplication.instance()
         theme.apply(app, str(self.session.qs.value("theme", "system")))
         app.setWindowIcon(QIcon(theme.app_logo(128)))
@@ -84,6 +87,7 @@ class MainWindow(QMainWindow):
         self.welcome.add_folder.connect(self.open_folder)
         self.welcome.open_help.connect(self.show_help)
         self.welcome.open_settings.connect(self.show_settings)
+        self.welcome.open_about.connect(self.show_about)
         self.welcome.return_to_project.connect(self.show_work)
         self.welcome.close_project.connect(self.close_project)
 
@@ -97,6 +101,10 @@ class MainWindow(QMainWindow):
         self._build_toolbar()
         self.support_card = SupportCard(self)                  # floats in the corner; hidden until asked for
         self.support_card.never_show.connect(self._support_never)
+        self.updates.state_changed.connect(self._on_update_state)
+        self.updates.install_requested.connect(self.install_update)
+        app.aboutToQuit.connect(self.updates.shutdown)         # never leave the worker thread running when the program ends
+        self._on_update_state()
         self.count_label = QLabel("")
         self.statusBar().addPermanentWidget(self.count_label)
         self.session.files_changed.connect(self._on_files_changed)
@@ -235,11 +243,12 @@ class MainWindow(QMainWindow):
         self._action(h, "Guide", self.show_help, QKeySequence("F1"))
         self._action(h, "Keyboard shortcuts", lambda: self.show_help("shortcuts"))
         h.addSeparator()
-        self._action(h, "About Echem Analyzer", self.show_about)
         self._action(h, "Show presets folder", self.show_presets_folder)
         h.addSeparator()
         self._action(h, "Buy me a coffee ☕", lambda: open_link(about.COFFEE.url))
         self._action(h, f"{about.AUTHOR}’s website", lambda: open_link(about.WEBSITE.url))
+        self._action(h, "Check for updates…", self.check_for_updates)
+        self._action(h, "About Echem Analyzer", self.show_about)
 
     def _build_toolbar(self) -> None:
         tb = QToolBar("Main")
@@ -273,6 +282,18 @@ class MainWindow(QMainWindow):
         spacer = QWidget()
         spacer.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         tb.addWidget(spacer)
+        self.update_btn = QPushButton()
+        self.update_btn.setObjectName("UpdateBadge")
+        self.update_btn.setCursor(Qt.PointingHandCursor)
+        self.update_btn.setIconSize(QSize(16, 16))
+        self.update_btn.setToolTip("Open the About window to download and install the update")
+        self.update_btn.clicked.connect(self.show_about)
+        self._update_action = tb.addWidget(self.update_btn)
+        self._update_action.setVisible(False)
+        gap0 = QWidget()
+        gap0.setFixedWidth(8)
+        self._update_gap = tb.addWidget(gap0)
+        self._update_gap.setVisible(False)
         # always visible; it opens the support card (which holds the link) and closes it again on a second click
         self.coffee_btn = coffee_button(compact=True, open_on_click=False)
         self.coffee_btn.clicked.connect(self.toggle_support_card)
@@ -731,13 +752,17 @@ class MainWindow(QMainWindow):
         if paths:
             self.load_paths(paths)
 
+    def _remember_layout(self) -> None:
+        self.session.qs.setValue("window/geometry", self.saveGeometry())
+        if self.files_dock.isVisible():
+            self.session.qs.setValue("layout/filesDockWidth", self.files_dock.width())
+
     def closeEvent(self, e) -> None:  # noqa: N802
         if not self._confirm_discard():
             e.ignore()
             return
-        self.session.qs.setValue("window/geometry", self.saveGeometry())
-        if self.files_dock.isVisible():
-            self.session.qs.setValue("layout/filesDockWidth", self.files_dock.width())
+        self._remember_layout()
+        self.updates.shutdown()
         super().closeEvent(e)
 
     # ================================================================== help
@@ -747,22 +772,38 @@ class MainWindow(QMainWindow):
         QDesktopServices.openUrl(QUrl.fromLocalFile(str(folder)))
 
     def show_about(self) -> None:
-        box = QMessageBox(self)
-        box.setWindowTitle("About Echem Analyzer")
-        box.setIconPixmap(theme.app_logo(72))
-        box.setText(f"<b style='font-size:15px'>Echem Analyzer</b> &nbsp;{__version__}")
-        box.setInformativeText(
-            "Standard-addition chronoamperometry and multi-cycle voltammetry for PalmSens data.<br><br>"
-            "<b>Projects</b> (.echemproj) hold the raw curves, every setting, the window state and the plots in one "
-            "file. <b>Reports</b> (PDF) and <b>workbooks</b> (Excel) are generated from the same analysis you see "
-            "on screen.<br><br>"
-            "<b>Standard addition:</b> |i| of each plateau is fitted against C = C<sub>s</sub>·ΣV/(V<sub>0</sub>+ΣV); "
-            "C<sub>x</sub> = intercept/slope; LOD = 3σ/S, LOQ = 10σ/S. Background current biases C<sub>x</sub> "
-            "unless a blank is subtracted.<br>"
-            "<b>Voltammetry:</b> anodic peak = maximum on the positive-going sweep, cathodic = minimum on the "
-            "negative-going sweep; charge = ∫ i dt; apparent capacitance (Q<sub>a</sub> − Q<sub>c</sub>)/(2ΔE) "
-            "also contains any Faradaic current.")
-        box.exec()
+        dlg = AboutDialog(self, self.updates)
+        dlg.exec()
+        dlg.deleteLater()                    # parented to the window: without this every opening would leave a hidden copy behind
+
+    def check_for_updates(self) -> None:
+        """Help ▸ Check for updates: start a check and show the About window, which reports the result."""
+        self.updates.check(manual=True)
+        self.show_about()
+
+    def schedule_update_check(self, delay_ms: int = 3500) -> None:
+        """Look for a newer release shortly after startup (if the user allows it). Called by the entry point only."""
+        QTimer.singleShot(delay_ms, self.updates.startup_check)
+
+    def _on_update_state(self) -> None:
+        text = self.updates.badge_text()
+        self._update_action.setVisible(bool(text))
+        self._update_gap.setVisible(bool(text))
+        self.update_btn.setText(f"  {text}")
+        self.update_btn.setIcon(theme.icon("arrow-up-circle", theme.current().accent, 16))
+        self.welcome.set_update(text or None)
+
+    def install_update(self) -> None:
+        """Close the app and let the helper install the downloaded update. Unsaved work is asked about first and never lost."""
+        if not self._confirm_discard():
+            return
+        error = self.updates.launch_installer()
+        if error:
+            QMessageBox.warning(self, "Update", error)
+            return
+        self._remember_layout()
+        self.session.dirty = False                                 # the user has just chosen to save or discard it
+        QApplication.quit()
 
     # ================================================================== support card
     def toggle_support_card(self) -> None:

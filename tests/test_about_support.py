@@ -124,6 +124,16 @@ def test_about_window_shows_author_links_support_and_version(qapp, opened):
     assert any(t == echem_analyzer.__version__ for t in texts)                           # the version card lists it too
 
 
+def test_help_menu_opens_the_about_window_and_has_the_coffee_link(win, monkeypatch):
+    shown = []
+    monkeypatch.setattr(AboutDialog, "exec", lambda self: shown.append(self) or 0)
+    win.show_about()
+    assert len(shown) == 1 and shown[0].windowTitle() == "About Echem Analyzer"
+    help_menu = next(a.menu() for a in win.menuBar().actions() if a.text().replace("&", "") == "Help")
+    labels = [a.text() for a in help_menu.actions()]
+    assert "About Echem Analyzer" in labels and any("coffee" in t.lower() for t in labels)
+
+
 def test_the_coffee_button_is_always_in_the_toolbar_and_opens_the_card(win, opened):
     assert win.coffee_btn.isVisible() and win.coffee_btn.text().strip() == "Buy me a coffee"
     assert not win.support_card.isVisible()                       # not on its own: only the entry point schedules it

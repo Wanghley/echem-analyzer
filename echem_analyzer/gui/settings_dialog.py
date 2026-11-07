@@ -179,6 +179,13 @@ class SettingsDialog(QDialog):
         card.body.addLayout(f)
         card.body.addWidget(self.support_popup)
         lay.addWidget(card)
+        self.update_check = QCheckBox("Look for a newer version when the app starts")
+        self.update_check.toggled.connect(lambda on: None if self._loading else prefs.set("update_check", bool(on)))
+        card = Card("Updates")
+        card.body.addWidget(self.update_check)
+        card.body.addWidget(_hint("At most once a day. The app contacts github.com only, and sends nothing but its version number. "
+                                  "Installing an update is always your choice (Help ▸ About)."))
+        lay.addWidget(card)
         card = Card("Storage")
         card.body.addWidget(self.where)
         row = QHBoxLayout()
@@ -201,7 +208,7 @@ class SettingsDialog(QDialog):
         self._loading = True
         try:
             blockers = [QSignalBlocker(wd) for wd in (self.theme_box, self.style_box, self.palette_box, self.font, self.lod_k,
-                                                      self.conc_box, self.dpi, self.page, self.recent, self.support_popup)]
+                                                      self.conc_box, self.dpi, self.page, self.recent, self.support_popup, self.update_check)]
             self.theme_box.setCurrentIndex(max(self.theme_box.findData(theme.preference()), 0))
             self.style_box.setCurrentIndex(max(self.style_box.findData(prefs.get("plot_style")), 0))
             self.palette_box.setCurrentIndex(max(self.palette_box.findData(prefs.get("plot_palette")), 0))
@@ -213,6 +220,7 @@ class SettingsDialog(QDialog):
             self.page.setCurrentIndex(max(self.page.findData(prefs.get("page_size")), 0))
             self.recent.setValue(int(prefs.get("recent_limit")))
             self.support_popup.setChecked(bool(prefs.get("support_popup")))
+            self.update_check.setChecked(bool(prefs.get("update_check")))
             del blockers
             self.operator.setText(prefs.get("operator"))
             self.institution.setText(prefs.get("institution"))

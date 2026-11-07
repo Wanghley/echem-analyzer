@@ -11,15 +11,16 @@ from pathlib import Path
 
 import pytest
 from PySide6.QtCore import QThread, QUrl
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QMessageBox
 
 from echem_analyzer import __version__, about, theme, updater
-from echem_analyzer.gui import about_dialog, support
+from echem_analyzer.gui import about_dialog, support, main_window as mw
 from echem_analyzer.gui.about_dialog import AboutDialog, details_text, version_rows
 from echem_analyzer.gui.ui_kit import ElidedLabel
 from echem_analyzer.gui.update_manager import State, UpdateManager
 from echem_analyzer.gui.update_panel import UpdatePanel
 from echem_analyzer.prefs import prefs
+from helpers import make_window
 
 
 BASE = "https://github.com/Wanghley/echem-analyzer/releases/download"
@@ -451,6 +452,134 @@ def test_the_about_window_footer_carries_the_signature(qapp, mgr):
     assert d.signature.plain_text() == f"Made with ♥ by {about.AUTHOR}"
 
 
+@pytest.fixture()
+def win(qapp, tmp_path):
+    w = make_window(tmp_path / "ws")
+    w.resize(1500, 900)
+    w.show()
+    qapp.processEvents()
+    return w
+
+
+def test_the_toolbar_badge_and_the_start_page_follow_the_manager(qapp, win, fakes):
+    win.updates._fetch, win.updates.kind, win.updates.key = fakes.fetch, "installed", "macos-arm64"
+    assert not win.update_btn.isVisibleTo(win) and not win.welcome.update_pill.isVisibleTo(win.welcome)
+    check_and_wait(qapp, win.updates)
+    assert win.update_btn.isVisible() and "v0.6.0" in win.update_btn.text() and not win.update_btn.icon().isNull()
+    assert win.welcome.update_pill.isVisible() and "v0.6.0" in win.welcome.update_pill.text()
+    prefs.set("update_seen", "")
+    win.updates._set(State.UP_TO_DATE)
+    qapp.processEvents()                                                         # a toolbar hides the widget on its next layout pass
+    assert not win.update_btn.isVisible() and not win.welcome.update_pill.isVisible()
+
+
+def test_the_badge_opens_the_about_window_with_the_windows_manager(qapp, win, fakes, monkeypatch):
+    shown = []
+    monkeypatch.setattr(AboutDialog, "exec", lambda self: shown.append(self.updates) or 0)
+    win.updates._fetch, win.updates.kind, win.updates.key = fakes.fetch, "installed", "macos-arm64"
+    check_and_wait(qapp, win.updates)
+    qapp.processEvents()
+    assert win.update_btn.isVisible()
+    win.update_btn.click()
+    assert shown == [win.updates]
+
+
+def test_a_new_window_never_touches_the_network(qapp, tmp_path, fakes):
+    w = make_window(tmp_path / "quiet")
+    w.updates._fetch = fakes.fetch
+    w.show()
+    for _ in range(10):
+        qapp.processEvents()
+    assert fakes.fetch_calls == 0 and w.updates.state is State.IDLE and w.updates._running == []
+
+
+def test_the_entry_point_schedules_the_check_after_a_delay(win, monkeypatch):
+    from PySide6.QtCore import QTimer
+    calls = []
+    monkeypatch.setattr(QTimer, "singleShot", staticmethod(lambda ms, fn: calls.append((ms, fn))))
+    win.schedule_update_check(1234)
+    assert calls == [(1234, win.updates.startup_check)]
+
+
+def test_help_menu_check_for_updates_starts_a_check_and_shows_about(win, monkeypatch):
+    started, shown = [], []
+    monkeypatch.setattr(win.updates, "check", lambda manual=True: started.append(manual))
+    monkeypatch.setattr(win, "show_about", lambda: shown.append(1))
+    help_menu = next(a.menu() for a in win.menuBar().actions() if a.text().replace("&", "") == "Help")
+    action = next(a for a in help_menu.actions() if a.text().startswith("Check for updates"))
+    action.trigger()
+    assert started == [True] and shown == [1]
+
+
+def test_about_opens_with_the_windows_manager_and_is_freed_afterwards(qapp, win, monkeypatch):
+    seen = []
+    monkeypatch.setattr(AboutDialog, "exec", lambda self: seen.append(self) or 0)
+    win.show_about()
+    assert seen[0].updates is win.updates
+    from PySide6.QtCore import QEvent
+    qapp.sendPostedEvents(None, QEvent.DeferredDelete)
+    from shiboken6 import isValid
+    assert not isValid(seen[0])                                                  # no hidden copy is left behind after each opening
+
+
+def ready_window(qapp, win, fakes):
+    win.updates._fetch, win.updates._prepare = fakes.fetch, fakes.prepare
+    win.updates._build_plan, win.updates._launch = fakes.build_plan, fakes.launch
+    win.updates.kind, win.updates.key = "installed", "macos-arm64"
+    get_ready(qapp, win.updates)
+
+
+def test_installing_closes_the_app_after_launching_the_helper(qapp, win, fakes, monkeypatch):
+    quits = []
+    monkeypatch.setattr(QApplication, "quit", staticmethod(lambda: quits.append(1)))
+    ready_window(qapp, win, fakes)
+    win.updates.request_install()                                                # the button path: signal -> window
+    assert fakes.launched == ["plan"] and quits == [1]
+
+
+def test_unsaved_work_is_asked_about_before_the_app_closes_and_cancel_keeps_everything(qapp, win, fakes, monkeypatch):
+    quits = []
+    monkeypatch.setattr(QApplication, "quit", staticmethod(lambda: quits.append(1)))
+    ready_window(qapp, win, fakes)
+    win.session.project_path = Path("/tmp/unsaved-demo.echemproj")                # an open project ...
+    win.session.dirty = True                                                       # ... with changes that are not saved
+    monkeypatch.setattr(win, "_ask_save", lambda: mw.CANCEL)
+    win.install_update()
+    assert fakes.launched == [] and quits == [] and win.updates.state is State.READY       # nothing happened: the work is still there
+    monkeypatch.setattr(win, "_ask_save", lambda: mw.DISCARD)
+    win.install_update()
+    assert fakes.launched == ["plan"] and quits == [1]
+
+
+def test_a_failure_to_start_the_installer_is_reported_and_the_app_stays_open(qapp, win, fakes, monkeypatch):
+    quits, warned = [], []
+    monkeypatch.setattr(QApplication, "quit", staticmethod(lambda: quits.append(1)))
+    monkeypatch.setattr(QMessageBox, "warning", staticmethod(lambda *a, **k: warned.append(a[2])))
+    ready_window(qapp, win, fakes)
+    fakes.plan_error = updater.UpdateError("The folder /Applications is not writable for you.")
+    win.install_update()
+    assert quits == [] and warned and "not writable" in warned[0]
+
+
+def test_closing_the_window_stops_the_worker(qapp, win, monkeypatch):
+    stopped = []
+    monkeypatch.setattr(win.updates, "shutdown", lambda: stopped.append(1))
+    win.session.dirty = False
+    win.close()
+    assert stopped == [1]
+
+
+def test_the_settings_page_has_the_update_switch(win):
+    win.show_settings()
+    box = win._settings.update_check
+    assert box.isChecked()
+    box.setChecked(False)
+    assert prefs.get("update_check") is False
+    prefs.set("update_check", True)
+    win._settings._load()
+    assert box.isChecked()
+
+
 def test_the_new_preferences_are_validated():
     from echem_analyzer import prefs as prefs_mod
     assert prefs.get("update_check") is True and prefs.get("last_update_check") == 0.0 and prefs.get("update_seen") == ""
@@ -458,3 +587,65 @@ def test_the_new_preferences_are_validated():
     assert prefs_mod.clean("last_update_check", -5) == 0.0 and prefs_mod.clean("last_update_check", float("nan")) == 0.0
     assert prefs_mod.clean("last_update_check", 1.8e9) == 1.8e9
     assert prefs_mod.clean("update_seen", 12) == ""
+
+
+@pytest.mark.skipif(__import__("sys").platform != "darwin", reason="builds a real disk image with hdiutil")
+def test_the_whole_update_chain_on_macos_manager_to_detached_helper_to_replaced_app(qapp, tmp_path, monkeypatch):
+    """Check, download (stood in by a real disk image), then the real plan and the real detached helper replace the app and reopen it."""
+    import hashlib
+    import os
+    import stat
+    import subprocess
+    import sys
+
+    # a fake installed app, and a disk image that holds the new version
+    src = tmp_path / "src" / "Echem Analyzer.app" / "Contents" / "MacOS"
+    src.mkdir(parents=True)
+    (src / "EchemAnalyzer").write_text("NEW 0.6.0")
+    dmg = tmp_path / "Echem-Analyzer-0.6.0-macos-arm64.dmg"
+    subprocess.run(["hdiutil", "create", "-volname", "t", "-srcfolder", str(tmp_path / "src"), "-ov", "-format", "UDZO", str(dmg)],
+                   check=True, capture_output=True)
+    target = tmp_path / "Applications" / "Echem Analyzer.app"
+    (target / "Contents" / "MacOS").mkdir(parents=True)
+    exe = target / "Contents" / "MacOS" / "EchemAnalyzer"
+    exe.write_text("OLD 0.5.0")
+
+    # `open` is replaced by a recorder, so no real app is launched
+    bindir = tmp_path / "bin"
+    bindir.mkdir()
+    opened_log = tmp_path / "open.log"
+    stub = bindir / "open"
+    stub.write_text(f'#!/bin/sh\necho "$@" >> "{opened_log}"\n')
+    stub.chmod(stub.stat().st_mode | stat.S_IEXEC)
+    monkeypatch.setenv("PATH", f"{bindir}:{os.environ['PATH']}")
+
+    gone = subprocess.Popen([sys.executable, "-c", "pass"])                      # a process that has already exited: the "app" that quit
+    gone.wait()
+    digest = hashlib.sha256(dmg.read_bytes()).hexdigest()
+    rel = release()
+    asset = updater.choose_asset(rel, "macos-arm64", "installed")
+    prepared = updater.Prepared(rel, asset, dmg, digest)
+
+    m = UpdateManager(fetch=lambda: rel, prepare=lambda *a: prepared,
+                      build_plan=lambda prep: updater.build_plan(prep, "darwin", exe, pid=gone.pid), launch=updater.launch)
+    m.kind, m.key = "installed", "macos-arm64"
+    try:
+        check_and_wait(qapp, m)
+        assert m.state is State.AVAILABLE and m.can_auto_install
+        m.download()
+        idle(qapp, m)
+        assert m.state is State.READY
+        assert m.launch_installer() == "" and m.state is State.INSTALLING
+        def done() -> bool:
+            try:                                                                 # between the helper's two renames the path briefly does not exist
+                return (target / "Contents" / "MacOS" / "EchemAnalyzer").read_text() == "NEW 0.6.0" and opened_log.exists()
+            except FileNotFoundError:
+                return False
+
+        replaced = wait_until(qapp, done, timeout=60)
+        log = (dmg.parent / "update.log").read_text() if (dmg.parent / "update.log").exists() else "(no log)"
+        assert replaced, log
+        assert opened_log.read_text().strip() == str(target) and "updated" in log
+        assert not Path(str(target) + ".update-old").exists()
+    finally:
+        m.shutdown()

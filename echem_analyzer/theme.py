@@ -266,6 +266,10 @@ QLabel#TileName {{ font-size: 12.5px; font-weight: 600; color: {p.text}; backgro
 QFrame#PageFooter {{ background: {p.surface}; border: none; border-top: 1px solid {p.border}; }}
 QFrame#PageFooter QLabel {{ background: transparent; }}
 QLabel#Signature {{ color: {p.muted}; font-size: 12px; background: transparent; }}
+QPushButton#UpdateBadge {{ background: {p.accent_soft}; color: {p.accent}; border: 1px solid {p.accent}; border-radius: 12px;
+                           padding: 4px 13px 4px 9px; font-weight: 600; font-size: 12px; }}
+QPushButton#UpdateBadge:hover {{ background: {p.accent}; color: {p.accent_text}; }}
+
 /* ---- updates and version information (About) ---- */
 QFrame#Card QLabel#UpdateChip[tone="neutral"] {{ background: {p.surface2}; border-radius: 18px; }}
 QFrame#Card QLabel#UpdateChip[tone="accent"] {{ background: {p.accent_soft}; border-radius: 18px; }}
