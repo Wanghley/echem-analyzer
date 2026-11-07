@@ -6,7 +6,7 @@ from typing import Optional
 from PySide6.QtCore import QPointF, QSettings, Qt
 from PySide6.QtGui import QColor, QPainter
 from PySide6.QtWidgets import (
-    QFrame, QHBoxLayout, QLabel, QSizePolicy, QSplitter, QSplitterHandle, QToolButton, QVBoxLayout, QWidget,
+    QFrame, QHBoxLayout, QLabel, QPushButton, QSizePolicy, QSplitter, QSplitterHandle, QVBoxLayout, QWidget,
 )
 
 
@@ -147,10 +147,10 @@ class CollapsibleCard(Card):
     def __init__(self, title: str, expanded: bool = False, parent: Optional[QWidget] = None):
         super().__init__("", parent)
         self._title = title.upper()
-        self.toggle = QToolButton()
+        self.toggle = QPushButton()                    # a push button, not a tool button: only it honours ``text-align: left``
         self.toggle.setObjectName("CardToggle")
         self.toggle.setCursor(Qt.PointingHandCursor)
-        self.toggle.setToolButtonStyle(Qt.ToolButtonTextOnly)
+        self.toggle.setFlat(True)
         self.toggle.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         self.layout().insertWidget(0, self.toggle)
         self.content = QWidget()

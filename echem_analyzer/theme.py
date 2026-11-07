@@ -160,9 +160,9 @@ QTabWidget#SubTabs QTabBar::tab {{ padding: 6px 12px 5px 12px; font-size: 12px; 
 QFrame#Card {{ background: {p.surface}; border: 1px solid {p.border}; border-radius: 12px; }}
 QFrame#Card QLabel {{ background: transparent; }}
 QLabel#CardTitle {{ color: {p.muted}; font-size: 10.5px; font-weight: 700; }}
-QToolButton#CardToggle {{ background: transparent; border: none; color: {p.muted}; font-size: 10.5px;
-                          font-weight: 700; text-align: left; padding: 0; }}
-QToolButton#CardToggle:hover {{ color: {p.text}; }}
+QPushButton#CardToggle {{ background: transparent; border: none; color: {p.muted}; font-size: 10.5px;
+                          font-weight: 700; text-align: left; padding: 2px 0; }}
+QPushButton#CardToggle:hover {{ color: {p.text}; background: transparent; }}
 QLabel#KpiLabel {{ color: {p.muted}; font-size: 10.5px; font-weight: 600; }}
 QLabel#KpiValue {{ font-size: 21px; font-weight: 650; color: {p.text}; }}
 QLabel#KpiSub {{ color: {p.muted}; font-size: 10.5px; }}
