@@ -7,6 +7,8 @@ Reports and project snapshots are always drawn with the LIGHT palette (print-fri
 from __future__ import annotations
 
 import sys
+import tempfile
+from pathlib import Path
 from typing import Optional
 
 from PySide6.QtCore import QByteArray, QObject, QRectF, Qt, Signal
@@ -70,7 +72,63 @@ def qpalette(p: Palette) -> QPalette:
     return pal
 
 
+def _arrow_files(color: str) -> dict[str, str]:
+    """PNG chevrons (``down``, ``up``) in ``color`` for the combo and spin boxes, as style-sheet-safe paths.
+
+    Written once per colour into the temp folder (a 1x file and an ``@2x`` one that Qt picks on high-DPI screens).  An empty
+    dict when that folder is not writable: the style sheet then leaves the arrows to the platform."""
+    out: dict[str, str] = {}
+    try:
+        folder = Path(tempfile.gettempdir()) / "echem-analyzer-ui"
+        folder.mkdir(parents=True, exist_ok=True)
+        tag = color.lstrip("#").lower()
+        for key, icon_name in (("down", "chevron-down"), ("up", "chevron-up")):
+            one, two = folder / f"{icon_name}-{tag}.png", folder / f"{icon_name}-{tag}@2x.png"
+            if not (one.exists() and two.exists()):
+                for path, px in ((one, 12), (two, 24)):
+                    r = QSvgRenderer(QByteArray(_svg(icon_name, color, px)))
+                    pm = QPixmap(px, px)
+                    pm.fill(Qt.transparent)
+                    pt = QPainter(pm)
+                    pt.setRenderHint(QPainter.Antialiasing)
+                    r.render(pt, QRectF(0, 0, px, px))
+                    pt.end()
+                    if not pm.save(str(path), "PNG"):
+                        return {}
+            out[key] = one.as_posix()
+    except OSError:
+        return {}
+    return out
+
+
+def shade(color: str, factor: int) -> str:
+    """``color`` darkened by Qt's rule: ``shade(c, 115)`` is ``QColor(c).darker(115)`` (100 = unchanged)."""
+    return QColor(color).darker(factor).name()
+
+
+def lighten(color: str, factor: int) -> str:
+    """``color`` lightened by Qt's rule: ``lighten(c, 110)`` is ``QColor(c).lighter(110)`` (100 = unchanged)."""
+    return QColor(color).lighter(factor).name()
+
+
 def stylesheet(p: Palette) -> str:
+    dark = p.name == "dark"
+    primary_top = lighten(p.accent, 108) if not dark else lighten(p.accent, 112)
+    primary_bottom = shade(p.accent, 108) if not dark else shade(p.accent, 104)
+    primary_hover_top, primary_hover_bottom = lighten(primary_top, 110), lighten(primary_bottom, 108)
+    arrows = _arrow_files(p.muted)
+    arrow_rules = ""
+    if arrows:
+        arrow_rules = f"""
+QComboBox::drop-down {{ subcontrol-origin: padding; subcontrol-position: center right; width: 26px; border: none; }}
+QComboBox::down-arrow {{ image: url("{arrows['down']}"); width: 12px; height: 12px; }}
+QSpinBox::up-button, QDoubleSpinBox::up-button {{ subcontrol-origin: border; subcontrol-position: top right; width: 22px; border: none;
+                                                  background: transparent; }}
+QSpinBox::down-button, QDoubleSpinBox::down-button {{ subcontrol-origin: border; subcontrol-position: bottom right; width: 22px;
+                                                      border: none; background: transparent; }}
+QSpinBox::up-arrow, QDoubleSpinBox::up-arrow {{ image: url("{arrows['up']}"); width: 9px; height: 9px; }}
+QSpinBox::down-arrow, QDoubleSpinBox::down-arrow {{ image: url("{arrows['down']}"); width: 9px; height: 9px; }}
+"""
     return f"""
 * {{ outline: 0; }}
 QMainWindow, QDialog {{ background: {p.bg}; }}
@@ -85,7 +143,7 @@ QToolBar#MainToolbar QToolButton {{ background: transparent; border: 1px solid t
 QToolBar#MainToolbar QToolButton:hover {{ background: {p.surface2}; border-color: {p.border}; }}
 QToolBar#MainToolbar QToolButton:pressed {{ background: {p.accent_soft}; }}
 QToolBar#MainToolbar QToolButton::menu-indicator {{ image: none; width: 0; }}
-QToolBar#MainToolbar QFrame#ToolSep {{ background: {p.border}; max-width: 1px; margin: 6px 8px; }}
+QToolBar#MainToolbar QFrame#ToolSep {{ background: {p.border}; border: none; max-width: 1px; margin: 7px 8px; }}
 QLabel#ProjectName {{ font-size: 15px; font-weight: 600; color: {p.text}; padding: 0 6px; }}
 QLabel#ProjectSub {{ color: {p.muted}; font-size: 11px; padding: 0 6px; }}
 
@@ -147,11 +205,33 @@ QPushButton, QToolButton#Soft {{ background: {p.surface}; color: {p.text}; borde
 QPushButton:hover, QToolButton#Soft:hover {{ background: {p.surface2}; }}
 QPushButton:pressed {{ background: {p.accent_soft}; }}
 QPushButton:disabled {{ color: {p.faint}; border-color: {p.border}; background: {p.surface}; }}
-QPushButton[primary="true"] {{ background: {p.accent}; color: {p.accent_text}; border: 1px solid {p.accent};
-                               font-weight: 600; }}
-QPushButton[primary="true"]:hover {{ background: {p.accent}; border-color: {p.text}; }}
+QPushButton[primary="true"] {{ background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 {primary_top}, stop:1 {primary_bottom});
+                               color: {p.accent_text}; border: 1px solid {primary_bottom}; font-weight: 600; }}
+QPushButton[primary="true"]:hover {{ background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 {primary_hover_top}, stop:1 {primary_hover_bottom});
+                                     border-color: {primary_bottom}; }}
+QPushButton[primary="true"]:pressed {{ background: {primary_bottom}; }}
+QPushButton[primary="true"]:disabled {{ background: {p.surface2}; color: {p.faint}; border-color: {p.border}; }}
 QPushButton[flat="true"] {{ background: transparent; border: 1px solid transparent; color: {p.accent}; }}
 QPushButton[flat="true"]:hover {{ background: {p.accent_soft}; }}
+
+/* ---- form controls ---- */
+QComboBox, QSpinBox, QDoubleSpinBox {{ background: {p.surface}; color: {p.text}; border: 1px solid {p.border_strong};
+                                       border-radius: 7px; padding: 3px 9px; min-height: 20px;
+                                       selection-background-color: {p.accent}; selection-color: {p.accent_text}; }}
+QComboBox:hover, QSpinBox:hover, QDoubleSpinBox:hover {{ border-color: {p.faint}; }}
+QComboBox:focus, QComboBox:on, QSpinBox:focus, QDoubleSpinBox:focus {{ border-color: {p.accent}; }}
+QComboBox:disabled, QSpinBox:disabled, QDoubleSpinBox:disabled {{ color: {p.faint}; background: {p.surface2}; border-color: {p.border}; }}
+QComboBox QAbstractItemView {{ background: {p.surface}; color: {p.text}; border: 1px solid {p.border_strong}; border-radius: 8px;
+                               padding: 4px; outline: 0; selection-background-color: {p.accent_soft}; selection-color: {p.text}; }}
+QTableWidget QComboBox {{ border-radius: 5px; padding: 1px 8px; min-height: 18px; }}
+QProgressBar {{ background: {p.surface2}; border: none; border-radius: 5px; color: {p.muted}; text-align: center;
+                min-height: 10px; max-height: 10px; font-size: 10px; }}
+QProgressBar::chunk {{ background: {p.accent}; border-radius: 5px; }}
+QSlider::groove:horizontal {{ background: {p.border_strong}; height: 4px; border-radius: 2px; }}
+QSlider::sub-page:horizontal {{ background: {p.accent}; border-radius: 2px; }}
+QSlider::handle:horizontal {{ background: {p.surface}; border: 2px solid {p.accent}; width: 12px; height: 12px;
+                              margin: -7px 0; border-radius: 8px; }}
+QSlider::handle:horizontal:hover {{ background: {p.accent_soft}; }}
 
 /* ---- inputs ---- */
 QLineEdit, QPlainTextEdit, QTextEdit {{ background: {p.surface}; color: {p.text}; border: 1px solid {p.border_strong};
@@ -204,7 +284,7 @@ QMenu::separator {{ height: 1px; background: {p.border}; margin: 4px 8px; }}
 QGroupBox {{ border: 1px solid {p.border}; border-radius: 10px; margin-top: 10px; padding-top: 8px; }}
 QGroupBox::title {{ subcontrol-origin: margin; left: 10px; padding: 0 4px; color: {p.muted}; font-weight: 600; }}
 QProgressDialog {{ background: {p.bg}; }}
-"""
+{arrow_rules}"""
 
 
 def refresh_plots() -> None:
@@ -257,6 +337,8 @@ _SVG = {
     "home": '<path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/>',
     "x-circle": '<circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/>',
     "image": '<rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="M21 15l-3.1-3.1a2 2 0 0 0-2.8 0L6 21"/>',
+    "chevron-down": '<polyline points="6 9 12 15 18 9"/>',
+    "chevron-up": '<polyline points="6 15 12 9 18 15"/>',
 }
 
 
