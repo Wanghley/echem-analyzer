@@ -5,15 +5,16 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Iterable, Optional
 
-from PySide6.QtCore import QSize, Qt, QUrl
+from PySide6.QtCore import QSize, Qt, QTimer, QUrl
 from PySide6.QtGui import QAction, QActionGroup, QDesktopServices, QIcon, QKeySequence
 from PySide6.QtWidgets import (
     QApplication, QDockWidget, QFileDialog, QFrame, QLabel, QMainWindow, QMenu, QMessageBox, QSizePolicy,
     QStackedWidget, QTabWidget, QToolBar, QToolButton, QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget,
 )
 
-from .. import __version__, theme
+from .. import __version__, about, theme
 from ..models import KIND_CA, KIND_CV
+from ..prefs import prefs
 from ..project import SUFFIX, ProjectError, collect_results, load_project
 from ..report import analysed_runs, build_report
 from ..report_pdf import write_pdf
@@ -31,6 +32,7 @@ from .project_dialog import ProjectInfoDialog
 from .settings_dialog import SettingsDialog
 from .session import Session, curve_short_label
 from .study_tab import StudyTab
+from .support import SupportCard, coffee_button, open_link
 from .welcome import WelcomePage
 
 FILTER = "PalmSens exports (*.csv *.pssession);;All files (*)"
@@ -94,6 +96,8 @@ class MainWindow(QMainWindow):
         self._build_dock()
         self._build_menus()
         self._build_toolbar()
+        self.support_card = SupportCard(self)                  # floats in the corner; hidden until asked for
+        self.support_card.never_show.connect(self._support_never)
         self.count_label = QLabel("")
         self.statusBar().addPermanentWidget(self.count_label)
         self.session.files_changed.connect(self._on_files_changed)
@@ -202,6 +206,9 @@ class MainWindow(QMainWindow):
         h.addSeparator()
         self._action(h, "About Echem Analyzer", self.show_about)
         self._action(h, "Show presets folder", self.show_presets_folder)
+        h.addSeparator()
+        self._action(h, "Buy me a coffee ☕", lambda: open_link(about.COFFEE.url))
+        self._action(h, f"{about.AUTHOR}’s website", lambda: open_link(about.WEBSITE.url))
 
     def _build_toolbar(self) -> None:
         tb = QToolBar("Main")
@@ -248,6 +255,14 @@ class MainWindow(QMainWindow):
         spacer = QWidget()
         spacer.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         tb.addWidget(spacer)
+        # always visible; it opens the support card (which holds the link) and closes it again on a second click
+        self.coffee_btn = coffee_button(compact=True, open_on_click=False)
+        self.coffee_btn.clicked.connect(self.toggle_support_card)
+        self.coffee_btn.setToolTip("Support Echem Analyzer\nA coffee keeps it going: " + about.COFFEE.url)
+        tb.addWidget(self.coffee_btn)
+        gap = QWidget()
+        gap.setFixedWidth(10)                                    # a little air before the icon buttons
+        tb.addWidget(gap)
         self.tb_help = tb.addAction("", lambda: self.show_help())
         self.tb_help.setToolTip("Guide (F1)")
         self.tb_settings = tb.addAction("", self.show_settings)
@@ -719,3 +734,29 @@ class MainWindow(QMainWindow):
             "negative-going sweep; charge = ∫ i dt; apparent capacitance (Q<sub>a</sub> − Q<sub>c</sub>)/(2ΔE) "
             "also contains any Faradaic current.")
         box.exec()
+
+    # ================================================================== support card
+    def toggle_support_card(self) -> None:
+        self.support_card.toggle()
+
+    def schedule_support_popup(self, delay_ms: int = 1800) -> None:
+        """Slide the support card in shortly after the window appears (unless the user turned that off in Settings).
+
+        Called by the program's entry point only, so tests and the self-test never see it."""
+        if prefs.get("support_popup"):
+            QTimer.singleShot(delay_ms, self._show_startup_card)
+
+    def _show_startup_card(self) -> None:
+        if prefs.get("support_popup") and self.isVisible() and not self.support_card.isVisible():
+            self.support_card.pop()
+
+    def _support_never(self) -> None:
+        prefs.set("support_popup", False)
+        self.statusBar().showMessage("The support card will not appear at startup. The coffee button stays in the toolbar; "
+                                     "turn the card back on in Settings ▸ Files and storage.", 10000)
+
+    def resizeEvent(self, e) -> None:  # noqa: N802
+        super().resizeEvent(e)
+        card = getattr(self, "support_card", None)
+        if card is not None:
+            card.reposition()

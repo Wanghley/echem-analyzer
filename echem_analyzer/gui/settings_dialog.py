@@ -6,7 +6,7 @@ from typing import Callable, Optional
 from PySide6.QtCore import QSignalBlocker, QSize, Qt, QUrl
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
-    QComboBox, QDialog, QDoubleSpinBox, QFormLayout, QHBoxLayout, QLabel, QLineEdit, QListWidget, QMessageBox,
+    QCheckBox, QComboBox, QDialog, QDoubleSpinBox, QFormLayout, QHBoxLayout, QLabel, QLineEdit, QListWidget, QMessageBox,
     QPushButton, QSlider, QSpinBox, QStackedWidget, QVBoxLayout, QWidget,
 )
 
@@ -171,10 +171,13 @@ class SettingsDialog(QDialog):
         self.where.setObjectName("SettingsHint")
         self.where.setWordWrap(True)
         self.where.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self.support_popup = QCheckBox("Show the “buy me a coffee” card when the app starts")
+        self.support_popup.toggled.connect(lambda on: None if self._loading else prefs.set("support_popup", bool(on)))
         card = Card("Start page")
         f = QFormLayout()
         f.addRow("Recent projects shown", self.recent)
         card.body.addLayout(f)
+        card.body.addWidget(self.support_popup)
         lay.addWidget(card)
         card = Card("Storage")
         card.body.addWidget(self.where)
@@ -198,7 +201,7 @@ class SettingsDialog(QDialog):
         self._loading = True
         try:
             blockers = [QSignalBlocker(wd) for wd in (self.theme_box, self.style_box, self.palette_box, self.font, self.lod_k,
-                                                      self.conc_box, self.dpi, self.page, self.recent)]
+                                                      self.conc_box, self.dpi, self.page, self.recent, self.support_popup)]
             self.theme_box.setCurrentIndex(max(self.theme_box.findData(theme.preference()), 0))
             self.style_box.setCurrentIndex(max(self.style_box.findData(prefs.get("plot_style")), 0))
             self.palette_box.setCurrentIndex(max(self.palette_box.findData(prefs.get("plot_palette")), 0))
@@ -209,6 +212,7 @@ class SettingsDialog(QDialog):
             self.dpi.setCurrentIndex(max(self.dpi.findData(prefs.get("export_dpi")), 0))
             self.page.setCurrentIndex(max(self.page.findData(prefs.get("page_size")), 0))
             self.recent.setValue(int(prefs.get("recent_limit")))
+            self.support_popup.setChecked(bool(prefs.get("support_popup")))
             del blockers
             self.operator.setText(prefs.get("operator"))
             self.institution.setText(prefs.get("institution"))

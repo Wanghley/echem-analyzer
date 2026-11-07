@@ -53,6 +53,7 @@ def main(argv: list[str] | None = None) -> int:
     win = MainWindow()
     app.window = win
     win.show()
+    win.schedule_support_popup()                       # only here: tests and --selftest never see the card
     paths = list(argv[1:]) + app.pending
     if paths:
         win.load_paths(paths)
