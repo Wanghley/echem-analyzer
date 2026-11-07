@@ -1,0 +1,5 @@
+0a99f6a1decdb7f2e05f6f315796fa460df70190d8474aacf0e1e8d25fd8f56e  Echem-Analyzer-0.5.0-macos-arm64.dmg
+ab043532df7a6fa9972bfd5e37b20a4f803052bda19a276bb755fbf843d338f9  Echem-Analyzer-0.5.0-macos-x86_64.dmg
+260064e83fd7ffa393fd67b387c26ab9a3679d89266edaadebf54c82619c9055  Echem-Analyzer-0.5.0-windows-x64-portable.zip
+58851d5f69fe0c01b611109456752caedc83bc6cf86166a595a03bd8daf29cdf  Echem-Analyzer-0.5.0-windows-x64-setup.exe
+3e4faa05173fc7a98fdf359bfaccdd242a766d3dd58d00484a7e82d34cae9a8e  echem-analyzer_0.5.0_amd64.deb

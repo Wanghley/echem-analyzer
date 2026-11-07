@@ -1,0 +1,41 @@
+{
+  "tag_name": "v0.5.0",
+  "name": "Echem Analyzer v0.5.0",
+  "body": "A more rigorous standard-addition analysis, and the first installers for macOS, Windows and Debian/Ubuntu.\n\n### Added\n- **Installers** for macOS (`.dmg`, Apple silicon and Intel), Windows (installer and portable zip) and Debian/Ubuntu (`.deb`), built with\n  PyInstaller by `packaging/build.py` and, on a version tag, by GitHub Actions, which publishes them as a GitHub Release with checksums.\n  Every build smoke-tests the frozen program, and the `.deb` and the Windows installer are installed and run before they are released.\n- `python -m echem_analyzer --selftest [FILE]`: analyses, reports, saves and draws every tab without a display, and writes the outcome as JSON.\n- Double-clicking a `.echemproj` opens it in the app (macOS, Windows installer and Linux package register the file type); the app has a window icon.\n- A CI workflow that runs the tests on every push and pull request.\n- **Standard addition:** unit selectors for V₀, sample volume, volume per addition, verified (pipette-checked) volume and background current;\n  C_x with a 95 % confidence interval and C_sample with its interval; the suitability check b·√Sxx/s(y); σ for LOD and LOQ from the residual\n  s(y/x), the baseline noise or the SD of blank replicates (all three always shown); the result with and without the baseline point;\n  warnings for a zero background, an impossible sample volume, a missing or double dilution correction, an implausible result, patterned\n  residuals, a failed suitability check, a baseline-noise LOD far below the s(y/x) LOD, a point count that does not match the additions, and a\n  settle time + window longer than a segment. All new settings are saved in presets and projects.\n- `echem_analyzer.standard_addition.evaluate_points`: the same calculation for any (added concentration, signal) arrays, used by the CA analysis.\n\n### Changed\n- **Dilution is now one choice** (concentration, signal scaling or none) instead of two switches that could both be on and correct the dilution\n  twice. Older projects and presets with both on keep the concentration correction.\n- **LOD = 3.3σ/|b|** (was 3σ/|b|; the factor is adjustable) and the default σ is the residual s(y/x) (was the baseline noise). On data whose\n  plateaus scatter more than the trace noise this gives a much larger, more honest LOD, and a warning says so.\n\n### Known limits\n- The installers are not signed: macOS Gatekeeper and Windows SmartScreen show a warning on first launch (the README explains how to\n  continue). The macOS app is only ad-hoc signed and not notarized.\n- The DPV, SWV, LSV, EIS, OCP and chronocoulometry readers still have only been checked on synthetic data, not on real instrument files.\n",
+  "draft": false,
+  "prerelease": false,
+  "html_url": "https://github.com/Wanghley/echem-analyzer/releases/tag/v0.5.0",
+  "published_at": "2026-11-04T18:30:27Z",
+  "assets": [
+    {
+      "name": "Echem-Analyzer-0.5.0-macos-arm64.dmg",
+      "size": 82732927,
+      "browser_download_url": "https://github.com/Wanghley/echem-analyzer/releases/download/v0.5.0/Echem-Analyzer-0.5.0-macos-arm64.dmg"
+    },
+    {
+      "name": "Echem-Analyzer-0.5.0-macos-x86_64.dmg",
+      "size": 92917411,
+      "browser_download_url": "https://github.com/Wanghley/echem-analyzer/releases/download/v0.5.0/Echem-Analyzer-0.5.0-macos-x86_64.dmg"
+    },
+    {
+      "name": "Echem-Analyzer-0.5.0-windows-x64-portable.zip",
+      "size": 109830801,
+      "browser_download_url": "https://github.com/Wanghley/echem-analyzer/releases/download/v0.5.0/Echem-Analyzer-0.5.0-windows-x64-portable.zip"
+    },
+    {
+      "name": "Echem-Analyzer-0.5.0-windows-x64-setup.exe",
+      "size": 73119100,
+      "browser_download_url": "https://github.com/Wanghley/echem-analyzer/releases/download/v0.5.0/Echem-Analyzer-0.5.0-windows-x64-setup.exe"
+    },
+    {
+      "name": "echem-analyzer_0.5.0_amd64.deb",
+      "size": 108255568,
+      "browser_download_url": "https://github.com/Wanghley/echem-analyzer/releases/download/v0.5.0/echem-analyzer_0.5.0_amd64.deb"
+    },
+    {
+      "name": "SHA256SUMS.txt",
+      "size": 527,
+      "browser_download_url": "https://github.com/Wanghley/echem-analyzer/releases/download/v0.5.0/SHA256SUMS.txt"
+    }
+  ]
+}
