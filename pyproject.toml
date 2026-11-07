@@ -3,6 +3,7 @@ name = "echem-analyzer"
 dynamic = ["version"]                      # single source: __version__ in echem_analyzer/__init__.py
 description = "Desktop platform for sensor electrochemistry: calibration, voltammetry, impedance, potentiometry and electrode studies from PalmSens and other instruments"
 readme = "README.md"
+authors = [{ name = "Wanghley Soares Martins", email = "me@wanghley.com" }]
 requires-python = ">=3.11,<3.14"
 dependencies = [
     "numpy>=1.26",
@@ -12,6 +13,11 @@ dependencies = [
     "xlsxwriter>=3.2",
     "openpyxl>=3.1",
 ]
+
+[project.urls]
+Homepage = "https://wanghley.com"
+Source = "https://github.com/Wanghley/echem-analyzer"
+Funding = "https://buymeacoffee.com/wanghley"
 
 [dependency-groups]
 dev = [

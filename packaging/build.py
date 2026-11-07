@@ -44,7 +44,7 @@ SPEC = ROOT / "packaging" / "echem-analyzer.spec"
 APP_NAME = "Echem Analyzer"
 PACKAGE = "echem-analyzer"
 HOMEPAGE = "https://github.com/Wanghley/echem-analyzer"
-MAINTAINER = "Wanghley <me@wanghley.com>"
+MAINTAINER = "Wanghley Soares Martins <me@wanghley.com>"
 SUMMARY = "Electrochemistry analysis for sensor development"
 DESCRIPTION = (
     "Calibration and figures of merit (LOD, LOQ, linear range), standard addition, cyclic and pulse voltammetry,\n"
