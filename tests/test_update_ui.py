@@ -10,10 +10,15 @@ import time
 from pathlib import Path
 
 import pytest
-from PySide6.QtCore import QThread
+from PySide6.QtCore import QThread, QUrl
+from PySide6.QtWidgets import QApplication
 
-from echem_analyzer import __version__, theme, updater
+from echem_analyzer import __version__, about, theme, updater
+from echem_analyzer.gui import about_dialog, support
+from echem_analyzer.gui.about_dialog import AboutDialog, details_text, version_rows
+from echem_analyzer.gui.ui_kit import ElidedLabel
 from echem_analyzer.gui.update_manager import State, UpdateManager
+from echem_analyzer.gui.update_panel import UpdatePanel
 from echem_analyzer.prefs import prefs
 
 
@@ -100,6 +105,14 @@ def mgr(qapp, fakes):
     yield m
     m.shutdown()
     qapp.processEvents()
+
+
+@pytest.fixture()
+def opened(monkeypatch):
+    urls: list[str] = []
+    monkeypatch.setattr(support, "open_link", lambda url: urls.append(url) or True)
+    monkeypatch.setattr("echem_analyzer.gui.update_panel.open_link", lambda url: urls.append(url) or True)
+    return urls
 
 
 @pytest.fixture(autouse=True)
@@ -290,6 +303,152 @@ def test_shutdown_waits_for_a_running_job_and_leaves_no_thread(qapp, mgr, fakes)
     assert mgr._running == []
     for _ in range(5):
         qapp.processEvents()                                                     # late signals from the finished job must be harmless
+
+
+@pytest.fixture()
+def panel(qapp, mgr):
+    p = UpdatePanel(mgr)
+    p.show()
+    qapp.processEvents()
+    return p
+
+
+def put(mgr, state, rel=None, auto=True):
+    mgr.release = rel
+    mgr.asset = updater.choose_asset(rel, "macos-arm64", "installed") if rel and auto else None
+    mgr.error = "Can't reach GitHub. Check your internet connection and try again."
+    mgr._set(state)
+
+
+@pytest.mark.parametrize("state,title,main,enabled,second", [
+    (State.IDLE, "Check for updates", "Check for updates", True, False),
+    (State.CHECKING, "Checking for updates…", "Checking…", False, False),
+    (State.UP_TO_DATE, "You are up to date", "Check again", True, False),
+    (State.AVAILABLE, "Version 0.6.0 is available", "Download and install", True, True),
+    (State.DOWNLOADING, "Downloading version 0.6.0…", "Cancel", True, False),
+    (State.VERIFYING, "Verifying version 0.6.0…", "Verifying…", False, False),
+    (State.READY, "Version 0.6.0 is ready to install", "Install and restart", True, True),
+    (State.INSTALLING, "Installing the update…", "Installing…", False, False),
+    (State.ERROR, "The update did not finish", "Try again", True, True),
+])
+def test_the_panel_shows_the_right_words_and_buttons_for_each_state(qapp, mgr, panel, state, title, main, enabled, second):
+    put(mgr, state, release() if state not in (State.IDLE, State.CHECKING) else None)
+    qapp.processEvents()
+    assert panel.title.text() == title
+    assert panel.main.text().strip() == main and panel.main.isEnabled() is enabled
+    assert panel.second.isVisibleTo(panel) is second
+    assert not panel.chip.pixmap().isNull()
+
+
+def test_the_buttons_do_the_one_next_step(qapp, mgr, panel, opened, monkeypatch):
+    calls = []
+    for name in ("check", "download", "cancel", "request_install", "retry"):
+        monkeypatch.setattr(mgr, name, lambda *a, _n=name, **k: calls.append(_n))
+    rel = release()
+    for state, expected in ((State.IDLE, "check"), (State.UP_TO_DATE, "check"), (State.AVAILABLE, "download"),
+                            (State.DOWNLOADING, "cancel"), (State.READY, "request_install"), (State.ERROR, "retry")):
+        calls.clear()
+        put(mgr, state, rel)
+        panel.main.click()
+        assert calls == [expected], state
+    put(mgr, State.AVAILABLE, rel)
+    panel.second.click()
+    assert opened == [rel.page]
+
+
+def test_a_copy_that_cannot_self_update_opens_the_download_page_instead(qapp, mgr, panel, opened):
+    rel = release()
+    put(mgr, State.AVAILABLE, rel, auto=False)
+    assert panel.main.text().strip() == "Open the download page" and "release page" in panel.detail.text()
+    panel.main.click()
+    assert opened == [rel.page] and mgr.state is State.AVAILABLE
+
+
+def test_the_progress_bar_follows_the_download(qapp, mgr, panel):
+    put(mgr, State.DOWNLOADING, release())
+    mgr.done, mgr.total = 2500, 5000
+    mgr.progress_changed.emit(2500, 5000)
+    assert panel.bar.isVisibleTo(panel) and panel.bar.maximum() == 1000 and panel.bar.value() == 500
+    assert "2.5 KB of 5.0 KB" in panel.detail.text()
+    put(mgr, State.IDLE)
+    assert not panel.bar.isVisibleTo(panel)
+
+
+def test_release_notes_are_shown_as_text_never_as_code(qapp, mgr, panel, opened):
+    hostile = ("## Notes\n<script>alert(1)</script>\n<img src=\"http://evil.example/x.png\">\n"
+               "<a href=\"javascript:alert(1)\">click</a>\n\n[good](https://github.com/Wanghley/echem-analyzer)")
+    put(mgr, State.AVAILABLE, release(notes=hostile))
+    panel._show_notes(True)
+    html = panel.notes.toHtml().lower()
+    assert "<script" not in html and "<img" not in html and "href=\"javascript" not in html
+    assert "alert(1)" in panel.notes.toPlainText()                               # shown as plain text
+    panel._note_link(QUrl("javascript:alert(1)"))
+    panel._note_link(QUrl("http://evil.example/"))
+    panel._note_link(QUrl("file:///etc/passwd"))
+    assert opened == []                                                          # only https links open, and only on a click
+    panel._note_link(QUrl("https://github.com/Wanghley/echem-analyzer"))
+    assert opened == ["https://github.com/Wanghley/echem-analyzer"]
+
+
+def test_notes_are_hidden_when_there_are_none_and_follow_the_version(qapp, mgr, panel):
+    put(mgr, State.AVAILABLE, release(notes="   "))
+    assert not panel.notes_toggle.isVisibleTo(panel)
+    put(mgr, State.AVAILABLE, release(notes="- something"))
+    assert panel.notes_toggle.isVisibleTo(panel) and "0.6.0" in panel.notes_toggle.text()
+    assert not panel.notes.isVisibleTo(panel)                                    # folded until asked for
+    panel.notes_toggle.click()
+    assert panel.notes.isVisibleTo(panel)
+
+
+def test_the_automatic_check_checkbox_writes_the_preference(qapp, mgr, panel):
+    assert panel.auto.isChecked() and prefs.get("update_check") is True
+    panel.auto.setChecked(False)
+    assert prefs.get("update_check") is False
+    panel.auto.setChecked(True)
+    assert prefs.get("update_check") is True
+
+
+def test_the_panel_survives_a_theme_change_in_every_state(qapp, mgr, panel):
+    rel = release()
+    for state in State:
+        put(mgr, state, rel)
+        for mode in ("dark", "light"):
+            theme.apply(qapp, mode)
+            qapp.processEvents()
+            assert not panel.chip.pixmap().isNull() and not panel.main.icon().isNull()
+
+
+def test_the_about_window_reports_what_is_running(qapp, mgr):
+    d = AboutDialog(None, mgr)
+    d.show()
+    qapp.processEvents()
+    rows = dict(version_rows())
+    assert rows["Version"] == __version__ and rows["Qt"] and rows["PySide6"] and rows["Python"] and rows["Installation"] and rows["Location"]
+    shown = {k: v.full_text() if isinstance(v, ElidedLabel) else v.text() for k, v in d.info_values.items()}
+    assert shown == rows
+    assert d.updates is mgr and d.update_panel.manager is mgr                    # one shared state, not a private copy
+
+
+def test_copy_details_puts_the_version_information_on_the_clipboard(qapp, mgr):
+    d = AboutDialog(None, mgr)
+    d.show()
+    d.copy_btn.click()
+    text = QApplication.clipboard().text()
+    assert text == details_text() and text.startswith("Echem Analyzer\n") and f"Version: {__version__}" in text
+    assert d.copy_btn.text().strip() == "Copied"
+    line = about_dialog.version_line()
+    assert f"Version {__version__}" in line and "Python" in line and "PySide6" in line and "Qt" in line
+
+
+def test_the_about_window_has_its_own_manager_when_opened_alone(qapp):
+    d = AboutDialog()
+    assert isinstance(d.updates, UpdateManager)
+    d.updates.shutdown()
+
+
+def test_the_about_window_footer_carries_the_signature(qapp, mgr):
+    d = AboutDialog(None, mgr)
+    assert d.signature.plain_text() == f"Made with ♥ by {about.AUTHOR}"
 
 
 def test_the_new_preferences_are_validated():

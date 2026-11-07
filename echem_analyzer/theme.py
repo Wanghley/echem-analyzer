@@ -244,6 +244,17 @@ QLabel#AuthorName {{ font-size: 17px; font-weight: 700; color: {p.text}; backgro
 QLabel#AuthorRole {{ font-size: 12px; color: {p.muted}; background: transparent; }}
 
 QLabel#Signature {{ color: {p.muted}; font-size: 12px; background: transparent; }}
+/* ---- updates and version information (About) ---- */
+QFrame#Card QLabel#UpdateChip[tone="neutral"] {{ background: {p.surface2}; border-radius: 18px; }}
+QFrame#Card QLabel#UpdateChip[tone="accent"] {{ background: {p.accent_soft}; border-radius: 18px; }}
+QFrame#Card QLabel#UpdateChip[tone="success"] {{ background: {p.success_soft}; border-radius: 18px; }}
+QFrame#Card QLabel#UpdateChip[tone="danger"] {{ background: {p.danger_soft}; border-radius: 18px; }}
+QLabel#UpdateTitle {{ font-size: 14px; font-weight: 700; color: {p.text}; background: transparent; }}
+QLabel#UpdateDetail {{ font-size: 12px; color: {p.muted}; background: transparent; }}
+QLabel#InfoKey {{ color: {p.muted}; font-size: 12px; background: transparent; }}
+QLabel#InfoValue {{ color: {p.text}; font-size: 12px; background: transparent; }}
+QTextBrowser#Notes {{ background: {p.surface2}; border: 1px solid {p.border}; border-radius: 8px; padding: 6px; font-size: 12px; }}
+
 /* ---- form controls ---- */
 QComboBox, QSpinBox, QDoubleSpinBox {{ background: {p.surface}; color: {p.text}; border: 1px solid {p.border_strong};
                                        border-radius: 7px; padding: 3px 9px; min-height: 20px;
@@ -377,6 +388,11 @@ _SVG = {
     "chevron-down": '<polyline points="6 9 12 15 18 9"/>',
     "chevron-up": '<polyline points="6 15 12 9 18 15"/>',
     "heart-fill": '<path fill="@C@" d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>',
+    "arrow-up-circle": '<circle cx="12" cy="12" r="10"/><polyline points="16 12 12 8 8 12"/><line x1="12" y1="16" x2="12" y2="8"/>',
+    "refresh-cw": '<polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>',
+    "check-circle": '<path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>',
+    "alert-triangle": '<path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>',
+    "copy": '<rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>',
 }
 
 

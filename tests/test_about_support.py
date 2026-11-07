@@ -13,6 +13,7 @@ from PySide6.QtWidgets import QLabel, QPushButton
 import echem_analyzer
 from echem_analyzer import about, prefs as prefs_mod, theme
 from echem_analyzer.gui import main_window as mw, support
+from echem_analyzer.gui.about_dialog import AboutDialog
 from echem_analyzer.prefs import prefs
 from helpers import make_window
 
@@ -38,6 +39,10 @@ def win(qapp, tmp_path):
 def _light(qapp):
     yield
     theme.apply(qapp, "light")
+
+
+def buttons(root, name):
+    return [b for b in root.findChildren(QPushButton) if b.objectName() == name]
 
 
 def test_author_and_links_are_the_ones_the_owner_gave():
@@ -99,6 +104,24 @@ def test_the_coffee_button_can_be_a_plain_trigger(opened):
     assert opened == []                                           # the toolbar one only opens the card
     support.coffee_button().click()
     assert opened == [about.COFFEE.url]
+
+
+def test_about_window_shows_author_links_support_and_version(qapp, opened):
+    d = AboutDialog()
+    d.show()
+    qapp.processEvents()
+    texts = [l.text() for l in d.findChildren(QLabel)]
+    assert about.AUTHOR in texts and about.AUTHOR_ROLE in texts
+    assert any(echem_analyzer.__version__ in t for t in texts)
+    chips = {b.link.key: b for b in buttons(d, "Chip") if hasattr(b, "link")}
+    assert set(chips) == {l.key for l in about.SOCIALS} | {"project"}
+    for link in about.SOCIALS:
+        chips[link.key].click()
+    assert opened == [l.url for l in about.SOCIALS]
+    opened.clear()
+    buttons(d, "Coffee")[0].click()
+    assert opened == [about.COFFEE.url]
+    assert any(t == echem_analyzer.__version__ for t in texts)                           # the version card lists it too
 
 
 def test_the_coffee_button_is_always_in_the_toolbar_and_opens_the_card(win, opened):
