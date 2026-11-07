@@ -7,7 +7,8 @@ import re
 
 import pytest
 from PySide6.QtCore import QTimer
-from PySide6.QtWidgets import QPushButton
+from PySide6.QtGui import QColor
+from PySide6.QtWidgets import QLabel, QPushButton
 
 import echem_analyzer
 from echem_analyzer import about, prefs as prefs_mod, theme
@@ -211,3 +212,33 @@ def test_the_arrow_images_exist_where_the_style_sheet_points(qapp):
 def test_the_toolbar_separators_have_no_border(qapp):
     theme.apply(qapp, "light")
     assert re.search(r"QFrame#ToolSep \{[^}]*border: none", qapp.styleSheet())
+
+
+def heart_colour(sig) -> QColor:
+    img = sig.heart.pixmap().toImage()
+    return img.pixelColor(img.width() // 2, img.height() // 2 - 1)
+
+
+@pytest.mark.parametrize("mode", ["light", "dark"])
+def test_the_signature_has_a_filled_blue_heart_in_both_themes(qapp, mode):
+    theme.apply(qapp, mode)
+    sig = support.Signature()
+    c = heart_colour(sig)
+    assert c.alpha() > 200 and c.saturation() > 80 and 200 <= c.hue() <= 245, c.name()          # opaque, saturated, blue
+    assert sig.plain_text() == "Made with ♥ by Wanghley Soares Martins"
+    texts = [l.text() for l in sig.findChildren(QLabel)]
+    assert "Made with" in texts and f"by <b>{about.AUTHOR}</b>" in texts
+    assert "Wanghley Soares Martins" in sig.accessibleName()
+
+
+def test_the_heart_follows_a_theme_switch(qapp):
+    theme.apply(qapp, "light")
+    sig = support.Signature()
+    light = heart_colour(sig).name()
+    theme.apply(qapp, "dark")
+    assert heart_colour(sig).name() != light
+
+
+def test_the_heart_icon_is_a_filled_shape():
+    svg = theme._svg("heart-fill", "#2563EB", 16).decode()
+    assert 'fill="#2563EB"' in svg and "@C@" not in svg

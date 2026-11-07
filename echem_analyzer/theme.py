@@ -243,6 +243,7 @@ QLabel#HeroBadge {{ color: #FFFFFF; background: rgba(255, 255, 255, 38); border:
 QLabel#AuthorName {{ font-size: 17px; font-weight: 700; color: {p.text}; background: transparent; }}
 QLabel#AuthorRole {{ font-size: 12px; color: {p.muted}; background: transparent; }}
 
+QLabel#Signature {{ color: {p.muted}; font-size: 12px; background: transparent; }}
 /* ---- form controls ---- */
 QComboBox, QSpinBox, QDoubleSpinBox {{ background: {p.surface}; color: {p.text}; border: 1px solid {p.border_strong};
                                        border-radius: 7px; padding: 3px 9px; min-height: 20px;
@@ -375,11 +376,12 @@ _SVG = {
     "x": '<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>',
     "chevron-down": '<polyline points="6 9 12 15 18 9"/>',
     "chevron-up": '<polyline points="6 15 12 9 18 15"/>',
+    "heart-fill": '<path fill="@C@" d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>',
 }
 
 
 def _svg(name: str, color: str, size: int) -> bytes:
-    body = _SVG[name]
+    body = _SVG[name].replace("@C@", color)           # icons that are filled shapes name their colour with @C@
     return (f'<svg xmlns="http://www.w3.org/2000/svg" width="{size}" height="{size}" viewBox="0 0 24 24" fill="none" '
             f'stroke="{color}" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">{body}</svg>').encode()
 

@@ -121,6 +121,57 @@ class Hero(QWidget):
             pt.drawLine(int(x1), int(y1), int(x2), int(y2))
 
 
+class Signature(QWidget):
+    """"Made with <blue heart> by <author>".
+
+    The heart is a filled shape from the icon set in the theme's blue, not an emoji, so it looks the same on every system and
+    follows light and dark."""
+
+    def __init__(self, parent: Optional[QWidget] = None):
+        super().__init__(parent)
+        row = QHBoxLayout(self)
+        row.setContentsMargins(0, 0, 0, 0)
+        row.setSpacing(5)
+        lead = QLabel("Made with")
+        lead.setObjectName("Signature")
+        self.heart = QLabel()
+        self.heart.setAlignment(Qt.AlignCenter)
+        self.heart.setFixedSize(16, 16)
+        tail = QLabel(f"by <b>{about.AUTHOR}</b>")
+        tail.setObjectName("Signature")
+        tail.setTextFormat(Qt.RichText)
+        for w in (lead, self.heart, tail):
+            row.addWidget(w)
+        self.setAccessibleName(f"Made with love by {about.AUTHOR}")
+        theme.bus.changed.connect(self._restyle)
+        self._restyle()
+
+    def plain_text(self) -> str:
+        return f"Made with ♥ by {about.AUTHOR}"
+
+    def _restyle(self) -> None:
+        self.heart.setPixmap(theme.pixmap("heart-fill", theme.current().accent, 15))
+
+
+class AuthorStrip(QWidget):
+    """The signature and the author's links as icons, centred on one line: the foot of the start page.
+
+    (The coffee button is in the toolbar, always visible, so it is not repeated here.)"""
+
+    def __init__(self, parent: Optional[QWidget] = None):
+        super().__init__(parent)
+        row = QHBoxLayout(self)
+        row.setContentsMargins(0, 0, 0, 0)
+        row.setSpacing(2)
+        row.addStretch(1)
+        self.signature = Signature()
+        row.addWidget(self.signature)
+        row.addSpacing(10)
+        for link in about.SOCIALS:
+            row.addWidget(LinkButton(link, text="", name="IconLink", icon_px=18))
+        row.addStretch(1)
+
+
 class SupportCard(QFrame):
     """A small dismissible card that floats at the bottom-right of the window and links to Buy Me a Coffee.
 
