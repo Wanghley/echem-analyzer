@@ -9,6 +9,7 @@ import importlib.util
 import io
 import json
 import os
+import shutil
 import stat
 import subprocess
 import sys
@@ -585,7 +586,16 @@ class TestLinuxScript:
         (bindir / "pkexec").unlink()
         stub(bindir, "xdg-open", f'echo "xdg-open $@" >> "{log}"\n')
         plan = updater.build_plan(prep, "linux", app, pid=dead_pid())
-        env_path = f"{bindir}:/usr/bin:/bin"                                    # no pkexec anywhere on this PATH
+        # A PATH that cannot contain pkexec: only our stubs and the few utilities the script uses (a real system, such as a CI runner,
+        # may well have /usr/bin/pkexec, and then the script would rightly prefer it).
+        tools = tmp_path / "tools"
+        tools.mkdir()
+        for name in ("date", "cut", "sleep", "nohup", "shasum"):
+            found = shutil.which(name)
+            if found:
+                (tools / name).symlink_to(found)
+        env_path = f"{bindir}:{tools}"
+        assert shutil.which("pkexec", path=env_path) is None
         r = subprocess.run(plan.argv, env={**os.environ, "PATH": env_path}, capture_output=True, text=True, timeout=30)
         assert r.returncode == 0 and f"xdg-open {prep.path}" in log.read_text()
 
