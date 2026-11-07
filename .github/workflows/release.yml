@@ -120,7 +120,7 @@ jobs:
       - name: Release notes from CHANGELOG.md, and one checksum list
         run: |
           python3 packaging/build.py --release-notes "${GITHUB_REF_NAME#v}" > notes.md
-          cat artifacts/*.sha256 > artifacts/SHA256SUMS.txt
+          cat artifacts/*.sha256 | tr -d '\r' > artifacts/SHA256SUMS.txt          # one list, with Unix line endings whatever the runner wrote
           rm artifacts/*.sha256
           ls -l artifacts
       - uses: softprops/action-gh-release@v2

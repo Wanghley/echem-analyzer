@@ -32,6 +32,8 @@ uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`, tagged `vM
 ### Fixed
 - The folded-section headers (*Advanced…*) are left-aligned, as intended, instead of centred.
 - The status bar says "1 file" and "1 CV run" instead of "1 files" and "1 CV runs".
+- `SHA256SUMS.txt` is written with Unix line endings. The Windows runner's CRLF made `shasum -a 256 -c SHA256SUMS.txt` fail for the two Windows
+  files of 0.5.0 on macOS and Linux (the files themselves were intact).
 
 ## [0.5.0] - 2026-11-04
 

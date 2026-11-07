@@ -126,7 +126,8 @@ def sha256(path: Path) -> str:
 
 
 def write_checksum(path: Path) -> None:
-    (path.parent / (path.name + ".sha256")).write_text(f"{sha256(path)}  {path.name}\n", encoding="utf-8")
+    # newline="\n": Windows' default text mode would write CRLF, and `shasum -c SHA256SUMS.txt` then looks for a file name ending in a carriage return
+    (path.parent / (path.name + ".sha256")).write_text(f"{sha256(path)}  {path.name}\n", encoding="utf-8", newline="\n")
 
 
 def dir_size(path: Path) -> int:

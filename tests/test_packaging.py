@@ -250,3 +250,25 @@ def test_double_clicking_a_file_on_macos_opens_it(qapp):
     late = SimpleNamespace(window=SimpleNamespace(load_paths=lambda p: opened.append(p)), pending=[])
     assert cls.event(late, QFileOpenEvent("/tmp/b.echemproj")) is True and opened == [["/tmp/b.echemproj"]] and late.pending == []
     assert QFileOpenEvent("/x").type() == QEvent.FileOpen
+
+
+# ===================================================================== checksums
+
+def test_checksum_files_use_unix_line_endings_whatever_the_system(tmp_path, monkeypatch):
+    """Windows' default text mode wrote CRLF into v0.5.0's SHA256SUMS.txt, so `shasum -c SHA256SUMS.txt` failed for the Windows files elsewhere."""
+    f = tmp_path / "a.bin"
+    f.write_bytes(b"x")
+    seen = []
+    real = Path.write_text
+
+    def spy(self, data, encoding=None, errors=None, newline=None):
+        seen.append(newline)
+        return real(self, data, encoding=encoding, errors=errors, newline=newline)
+
+    monkeypatch.setattr(Path, "write_text", spy)
+    build.write_checksum(f)
+    assert seen == ["\n"]                                                       # asked for LF explicitly: no system default can turn it into CRLF
+    raw = (tmp_path / "a.bin.sha256").read_bytes()
+    assert raw.endswith(b"  a.bin\n") and b"\r" not in raw
+    workflow = (ROOT / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
+    assert "tr -d '\\r' > artifacts/SHA256SUMS.txt" in workflow                  # and the release job strips any that a runner still wrote
