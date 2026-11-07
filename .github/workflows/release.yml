@@ -23,7 +23,7 @@ jobs:
     env:
       QT_QPA_PLATFORM: offscreen
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: The tag must be v<version> (the version in echem_analyzer/__init__.py)
         if: github.ref_type == 'tag'
         run: python3 packaging/build.py --check-tag "$GITHUB_REF_NAME"
@@ -53,7 +53,7 @@ jobs:
           # built on the oldest Ubuntu LTS runner: the program then runs on that glibc and newer (Ubuntu 22.04+, Debian 12+)
           - { name: "Debian / Ubuntu", os: ubuntu-22.04 }
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v6
         with:
           enable-cache: true
@@ -111,7 +111,7 @@ jobs:
     permissions:
       contents: write                     # the only job that may create a release
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/download-artifact@v4
         with:
           pattern: installer-*
