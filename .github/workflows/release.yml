@@ -30,7 +30,7 @@ jobs:
       - name: The changelog must describe this version
         if: github.ref_type == 'tag'
         run: python3 packaging/build.py --release-notes "${GITHUB_REF_NAME#v}" > /dev/null
-      - uses: astral-sh/setup-uv@v6
+      - uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
       - name: Qt system libraries
@@ -54,7 +54,7 @@ jobs:
           - { name: "Debian / Ubuntu", os: ubuntu-22.04 }
     steps:
       - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v6
+      - uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
 
