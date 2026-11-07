@@ -95,7 +95,7 @@ jobs:
           if (Test-Path $out) { Get-Content $out }
           if ($p.ExitCode -ne 0) { throw "the installed program's self-test failed (exit $($p.ExitCode))" }
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: installer-${{ matrix.os }}
           path: dist/release/*
