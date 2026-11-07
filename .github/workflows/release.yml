@@ -47,7 +47,7 @@ jobs:
       fail-fast: false                    # one platform failing must not hide the others
       matrix:
         include:
-          - { name: "macOS (Apple silicon)", os: macos-14 }
+          - { name: "macOS (Apple silicon)", os: macos-15 }
           - { name: "macOS (Intel)", os: macos-15-intel }
           - { name: "Windows", os: windows-latest }
           # built on the oldest Ubuntu LTS runner: the program then runs on that glibc and newer (Ubuntu 22.04+, Debian 12+)

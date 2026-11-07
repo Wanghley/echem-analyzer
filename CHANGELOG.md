@@ -34,6 +34,8 @@ uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`, tagged `vM
 - The status bar says "1 file" and "1 CV run" instead of "1 files" and "1 CV runs".
 - `SHA256SUMS.txt` is written with Unix line endings. The Windows runner's CRLF made `shasum -a 256 -c SHA256SUMS.txt` fail for the two Windows
   files of 0.5.0 on macOS and Linux (the files themselves were intact).
+- The release workflow builds the Apple-silicon installer on `macos-15`: GitHub retired the `macos-14` runners on 2 November 2026, so the old
+  label never started a job.
 
 ## [0.5.0] - 2026-11-04
 

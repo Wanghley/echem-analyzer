@@ -272,3 +272,18 @@ def test_checksum_files_use_unix_line_endings_whatever_the_system(tmp_path, monk
     assert raw.endswith(b"  a.bin\n") and b"\r" not in raw
     workflow = (ROOT / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
     assert "tr -d '\\r' > artifacts/SHA256SUMS.txt" in workflow                  # and the release job strips any that a runner still wrote
+
+
+# ===================================================================== runner images
+
+RETIRED_RUNNERS = ("macos-12", "macos-13", "macos-14", "ubuntu-20.04", "windows-2019")
+
+
+def test_workflows_do_not_ask_for_retired_runner_images():
+    """GitHub retired the macos-14 images on 2 November 2026: a job that asks for one never starts (v0.5.1's first release build died on it)."""
+    for wf in sorted((ROOT / ".github" / "workflows").glob("*.yml")):
+        text = wf.read_text(encoding="utf-8")
+        for label in RETIRED_RUNNERS:
+            assert not re.search(rf"(?<![\w-]){re.escape(label)}(?![\w-])", text), f"{wf.name} asks for the retired runner {label}"
+    release = (ROOT / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
+    assert sorted(re.findall(r"os: (macos-[\w-]+)", release)) == ["macos-15", "macos-15-intel"]     # one Apple-silicon and one Intel build
