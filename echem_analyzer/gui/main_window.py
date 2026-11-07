@@ -8,7 +8,7 @@ from typing import Iterable, Optional
 from PySide6.QtCore import QSize, Qt, QTimer, QUrl
 from PySide6.QtGui import QAction, QActionGroup, QDesktopServices, QIcon, QKeySequence
 from PySide6.QtWidgets import (
-    QApplication, QDockWidget, QFileDialog, QFrame, QLabel, QMainWindow, QMenu, QMessageBox, QSizePolicy,
+    QApplication, QDockWidget, QFileDialog, QFrame, QHBoxLayout, QLabel, QMainWindow, QMenu, QMessageBox, QSizePolicy,
     QStackedWidget, QTabWidget, QToolBar, QToolButton, QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget,
 )
 
@@ -21,7 +21,7 @@ from ..report_pdf import write_pdf
 from ..workbook import export_workbook
 from .analysis_tab import AnalysisTab
 from .ca_tab import CATab
-from .ui_kit import Splitter, persist_splitters
+from .ui_kit import ElidedLabel, Splitter, persist_splitters
 from .compare_tab import CompareTab
 from .cv_tab import CVTab
 from .electrode_tab import ElectrodeTab
@@ -119,14 +119,44 @@ class MainWindow(QMainWindow):
 
     # ================================================================== chrome
     def _build_dock(self) -> None:
+        """The left panel: the open project (name, where it is saved) on top, the files it holds below."""
         self.file_tree = QTreeWidget()
         self.file_tree.setHeaderHidden(True)
         self.file_tree.setFrameShape(QFrame.NoFrame)
         self.file_tree.itemDoubleClicked.connect(self._on_tree_double_click)
         self.file_tree.setToolTip("Double-click a CA run to analyse it, or a CV scan to open its run.")
-        dock = QDockWidget("FILES", self)
+
+        header = QFrame()
+        header.setObjectName("ProjectHeader")
+        header.setAttribute(Qt.WA_StyledBackground, True)
+        row = QHBoxLayout(header)
+        row.setContentsMargins(12, 4, 12, 12)
+        row.setSpacing(10)
+        self.project_chip = QLabel()
+        self.project_chip.setObjectName("ProjectChip")
+        self.project_chip.setFixedSize(34, 34)
+        self.project_chip.setAlignment(Qt.AlignCenter)
+        row.addWidget(self.project_chip, 0, Qt.AlignTop)
+        text = QVBoxLayout()
+        text.setSpacing(1)
+        self.name_label = ElidedLabel("", Qt.ElideRight)
+        self.name_label.setObjectName("ProjectName")
+        self.sub_label = ElidedLabel("", Qt.ElideMiddle)
+        self.sub_label.setObjectName("ProjectSub")
+        text.addWidget(self.name_label)
+        text.addWidget(self.sub_label)
+        row.addLayout(text, 1)
+
+        panel = QWidget()
+        col = QVBoxLayout(panel)
+        col.setContentsMargins(0, 0, 0, 0)
+        col.setSpacing(0)
+        col.addWidget(header)
+        col.addWidget(self.file_tree, 1)
+
+        dock = QDockWidget("PROJECT", self)
         dock.setObjectName("files_dock")
-        dock.setWidget(self.file_tree)
+        dock.setWidget(panel)
         dock.setFeatures(QDockWidget.DockWidgetMovable | QDockWidget.DockWidgetClosable)
         self.addDockWidget(Qt.LeftDockWidgetArea, dock)
         dock.setMinimumWidth(150)
@@ -221,19 +251,6 @@ class MainWindow(QMainWindow):
         self.addToolBar(Qt.TopToolBarArea, tb)
         self.toolbar = tb
 
-        self.name_label = QLabel("")
-        self.name_label.setObjectName("ProjectName")
-        self.sub_label = QLabel("")
-        self.sub_label.setObjectName("ProjectSub")
-        box = QWidget()
-        lay = QVBoxLayout(box)
-        lay.setContentsMargins(4, 0, 12, 0)
-        lay.setSpacing(0)
-        lay.addWidget(self.name_label)
-        lay.addWidget(self.sub_label)
-        tb.addWidget(box)
-        self._tool_sep(tb)
-
         self.tb_home = tb.addAction("Home", self.show_home)
         self.tb_home.setToolTip("Back to the start page (the project stays open)")
         self.tb_open = tb.addAction("Open", self.open_project_dialog)
@@ -282,6 +299,7 @@ class MainWindow(QMainWindow):
     def _restyle_toolbar(self) -> None:
         p = theme.current()
         self.tb_home.setIcon(theme.icon("home", p.text))
+        self.project_chip.setPixmap(theme.pixmap("folder", p.accent, 18))
         self.tb_open.setIcon(theme.icon("folder-open", p.text))
         self.tb_save.setIcon(theme.icon("save", p.text))
         self.tb_add.setIcon(theme.icon("plus", p.text))

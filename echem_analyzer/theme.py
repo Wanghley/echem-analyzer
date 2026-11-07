@@ -145,8 +145,11 @@ QToolBar#MainToolbar QToolButton:hover {{ background: {p.surface2}; border-color
 QToolBar#MainToolbar QToolButton:pressed {{ background: {p.accent_soft}; }}
 QToolBar#MainToolbar QToolButton::menu-indicator {{ image: none; width: 0; }}
 QToolBar#MainToolbar QFrame#ToolSep {{ background: {p.border}; border: none; max-width: 1px; margin: 7px 8px; }}
-QLabel#ProjectName {{ font-size: 15px; font-weight: 600; color: {p.text}; padding: 0 6px; }}
-QLabel#ProjectSub {{ color: {p.muted}; font-size: 11px; padding: 0 6px; }}
+QFrame#ProjectHeader {{ background: transparent; border: none; border-bottom: 1px solid {p.border}; }}
+QFrame#ProjectHeader QLabel {{ background: transparent; }}
+QLabel#ProjectName {{ font-size: 13.5px; font-weight: 650; color: {p.text}; }}
+QLabel#ProjectSub {{ color: {p.muted}; font-size: 11px; }}
+QFrame#ProjectHeader QLabel#ProjectChip {{ background: {p.accent_soft}; border-radius: 9px; }}
 
 /* ---- tabs ---- */
 QTabWidget::pane {{ border: none; background: transparent; }}
