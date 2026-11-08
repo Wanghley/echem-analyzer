@@ -228,6 +228,11 @@ def fetch_latest(opener=None, timeout: float = 10.0) -> Release:
     return parse_release(doc)
 
 
+def _why(exc: ssl.SSLError) -> str:
+    """The short technical reason of a TLS failure ("unable to get local issuer certificate"), for the message and for bug reports."""
+    return str(getattr(exc, "verify_message", None) or getattr(exc, "reason", None) or exc)[:90]
+
+
 def describe_error(exc: BaseException) -> str:
     """A short, plain-language reason for ``exc``."""
     if isinstance(exc, UpdateError):
@@ -240,13 +245,13 @@ def describe_error(exc: BaseException) -> str:
         return f"GitHub answered with an error ({exc.code})."
     if isinstance(exc, urllib.error.URLError):
         if isinstance(exc.reason, ssl.SSLError):
-            return ("A secure connection to GitHub could not be made (a certificate problem). "
+            return (f"A secure connection to GitHub could not be made (a certificate problem: {_why(exc.reason)}). "
                     "Check the computer's date and any proxy, or use the download page.")
         return "Can't reach GitHub. Check your internet connection and try again."
     if isinstance(exc, (TimeoutError, socket.timeout)):
         return "GitHub did not answer in time. Check your internet connection and try again."
     if isinstance(exc, ssl.SSLError):
-        return "A secure connection to GitHub could not be made (a certificate problem)."
+        return f"A secure connection to GitHub could not be made (a certificate problem: {_why(exc)})."
     if isinstance(exc, OSError):
         return f"A file error stopped the update: {exc.strerror or exc}"
     return f"Something went wrong: {exc}"

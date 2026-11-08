@@ -649,3 +649,11 @@ def test_the_whole_update_chain_on_macos_manager_to_detached_helper_to_replaced_
         assert not Path(str(target) + ".update-old").exists()
     finally:
         m.shutdown()
+
+
+def test_after_a_failed_check_the_release_page_is_one_click_away(qapp, mgr, panel, opened):
+    """The error says "use the download page": with no release known yet, the button must still be there."""
+    put(mgr, State.ERROR, None)
+    assert panel.second.isVisibleTo(panel) and not mgr.release
+    panel.second.click()
+    assert opened == [updater.RELEASES_PAGE]

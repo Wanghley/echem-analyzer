@@ -117,7 +117,7 @@ class UpdatePanel(Card):
         self.main.setEnabled(enabled)
         repolish(self.main)
         self.main.setIcon(theme.icon(self._main_icon(st, m), theme.current().accent_text if primary else theme.current().text, 16))
-        self.second.setVisible(bool(rel) and st in (State.AVAILABLE, State.READY, State.ERROR))
+        self.second.setVisible(st is State.ERROR or (bool(rel) and st in (State.AVAILABLE, State.READY)))      # after a failure: the page is the way out
         showing_bar = st in (State.CHECKING, State.DOWNLOADING, State.VERIFYING, State.INSTALLING)
         self.bar.setVisible(showing_bar)
         if showing_bar:
@@ -209,8 +209,7 @@ class UpdatePanel(Card):
             m.check(manual=True)
 
     def _second_clicked(self) -> None:
-        if self.manager.release:
-            open_link(self.manager.release.page)
+        open_link(self.manager.release.page if self.manager.release else updater.RELEASES_PAGE)
 
     def _note_link(self, url: QUrl) -> None:
         if url.scheme() == "https":                          # only ever web links, and only when the user clicks one

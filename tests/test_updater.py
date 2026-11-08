@@ -656,3 +656,12 @@ def test_the_ca_list_is_the_bundled_one_then_the_systems_then_nothing(tmp_path, 
     monkeypatch.setattr(updater, "SYSTEM_CA_FILES", (str(tmp_path / "nope.pem"),))
     assert updater.ca_bundle() is None
     assert updater.ssl_context().verify_mode == updater.ssl.CERT_REQUIRED             # no list at all: still verifying, never switched off
+
+
+def test_a_certificate_failure_says_why():
+    import ssl
+    reason = ssl.SSLCertVerificationError(1, "[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed")
+    reason.verify_message = "unable to get local issuer certificate"
+    msg = updater.describe_error(urllib.error.URLError(reason))
+    assert "unable to get local issuer certificate" in msg and "download page" in msg
+    assert "handshake boom" in updater.describe_error(ssl.SSLError("handshake boom"))
