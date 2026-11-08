@@ -5,6 +5,10 @@ uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`, tagged `vM
 
 ## [Unreleased]
 
+## [0.5.2] - 2026-11-07
+
+The update check works in the installed app.
+
 ### Fixed
 - **The installed macOS app could not check for updates.** On a Mac without a python.org Python it failed with "A secure connection to GitHub could
   not be made (a certificate problem)", because the built app looked for its trusted certificates in a folder only the build machine has. The app now
@@ -107,7 +111,8 @@ First tagged release: the platform for sensor electrochemistry beyond standard a
 - 0.2: multi-cycle CV analysis, saveable projects and named presets.
 - 0.1: chronoamperometry standard addition with LOD and LOQ, and comparison of runs.
 
-[Unreleased]: https://github.com/Wanghley/echem-analyzer/compare/v0.5.1...HEAD
+[Unreleased]: https://github.com/Wanghley/echem-analyzer/compare/v0.5.2...HEAD
+[0.5.2]: https://github.com/Wanghley/echem-analyzer/releases/tag/v0.5.2
 [0.5.1]: https://github.com/Wanghley/echem-analyzer/releases/tag/v0.5.1
 [0.5.0]: https://github.com/Wanghley/echem-analyzer/releases/tag/v0.5.0
 [0.4.0]: https://github.com/Wanghley/echem-analyzer/releases/tag/v0.4.0
