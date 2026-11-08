@@ -224,8 +224,8 @@ def test_the_selftest_runs_the_whole_app_and_reports_json(qapp, tmp_path):
     assert main(["echem-analyzer", "--selftest", str(out)]) == 0
     doc = json.loads(out.read_text(encoding="utf-8"))
     assert doc["ok"] and doc["version"] == echem_analyzer.__version__ and doc["frozen"] is False
-    assert [s["step"] for s in doc["steps"]] == ["import every module", "analyse, calibrate, report", "write PDF, Excel and project file",
-                                                 "open the window and draw every tab"] and all(s["ok"] for s in doc["steps"])
+    assert [s["step"] for s in doc["steps"]] == ["import every module", "trusted certificates for HTTPS", "analyse, calibrate, report",
+                                                 "write PDF, Excel and project file", "open the window and draw every tab"] and all(s["ok"] for s in doc["steps"])
 
 
 def test_a_failing_step_fails_the_selftest(qapp, tmp_path, monkeypatch):

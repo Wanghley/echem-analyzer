@@ -62,6 +62,16 @@ def _imports(ctx):
     return f"{len(names)} modules"
 
 
+@step("trusted certificates for HTTPS")
+def _trust_store(ctx):
+    from . import updater
+    cafile = updater.ca_bundle()
+    assert cafile and Path(cafile).is_file(), "no list of trusted certificates: the app could not verify GitHub (the update check would fail)"
+    n = updater.ssl_context().cert_store_stats()["x509_ca"]
+    assert n >= 50, f"only {n} trusted CA certificates"
+    return f"{n} trusted CA certificates (list: {Path(cafile).name})"
+
+
 @step("analyse, calibrate, report")
 def _analysis(ctx):
     from .report import build_report
