@@ -5,6 +5,13 @@ uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`, tagged `vM
 
 ## [Unreleased]
 
+### Fixed
+- **The installed macOS app could not check for updates.** On a Mac without a python.org Python it failed with "A secure connection to GitHub could
+  not be made (a certificate problem)", because the built app looked for its trusted certificates in a folder only the build machine has. The app now
+  carries its own list of trusted certificates (certifi) and uses it as well as the system's; the build's self-test checks for it, so a build without
+  the list fails. **Installed 0.5.1 apps cannot check for updates themselves: download 0.5.2 from the releases page once.**
+- A failed update check says why (for example "unable to get local issuer certificate"), and the Release page button is available after a failure.
+
 ## [0.5.1] - 2026-11-06
 
 A quieter start page, an About window with self-updating, and a new README.
