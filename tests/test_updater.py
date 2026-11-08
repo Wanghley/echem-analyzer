@@ -630,3 +630,29 @@ def test_the_real_v0_5_0_release_is_understood_end_to_end():
         assert sums.get(asset.name) and len(sums[asset.name]) == 64, f"{key}: the installer has no checksum entry"
     assert updater.choose_asset(r, "linux-arm64", "installed") is None          # CI builds no arm64 package: the download page is the way
     assert not updater.is_newer(r.version, (0, 5, 0)) and updater.is_newer(r.version, (0, 4, 0))
+
+
+# ===================================================================== the trust store
+def test_the_update_check_trusts_a_bundled_list_even_when_the_system_has_none(monkeypatch):
+    """The built macOS app looked for certificates in a python.org folder that users' Macs do not have, so it trusted nothing and every
+    check failed with "unable to get local issuer certificate". Point the platform at no certificates at all: the update check must still verify."""
+    import ssl
+    monkeypatch.setenv("SSL_CERT_FILE", "/nonexistent")
+    monkeypatch.setenv("SSL_CERT_DIR", "/nonexistent")
+    assert ssl.create_default_context().cert_store_stats()["x509_ca"] == 0           # the failure: a plain context trusts nothing here
+    ctx = updater.ssl_context()
+    assert ctx.cert_store_stats()["x509_ca"] >= 50
+    assert ctx.verify_mode == ssl.CERT_REQUIRED and ctx.check_hostname               # and it still checks certificates and host names
+
+
+def test_the_ca_list_is_the_bundled_one_then_the_systems_then_nothing(tmp_path, monkeypatch):
+    import certifi
+    assert updater.ca_bundle() == certifi.where() and Path(updater.ca_bundle()).is_file()
+    monkeypatch.setattr(certifi, "where", lambda: str(tmp_path / "missing.pem"))      # certifi's file gone: fall back to the system's list
+    system = tmp_path / "system.pem"
+    system.write_text("x")
+    monkeypatch.setattr(updater, "SYSTEM_CA_FILES", (str(tmp_path / "nope.pem"), str(system)))
+    assert updater.ca_bundle() == str(system)
+    monkeypatch.setattr(updater, "SYSTEM_CA_FILES", (str(tmp_path / "nope.pem"),))
+    assert updater.ca_bundle() is None
+    assert updater.ssl_context().verify_mode == updater.ssl.CERT_REQUIRED             # no list at all: still verifying, never switched off

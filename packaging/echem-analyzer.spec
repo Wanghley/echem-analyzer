@@ -4,7 +4,7 @@ import re
 import sys
 from pathlib import Path
 
-from PyInstaller.utils.hooks import collect_submodules
+from PyInstaller.utils.hooks import collect_data_files, collect_submodules
 
 ROOT = Path(SPECPATH).parent
 VERSION = re.search(r'__version__ = "([^"]+)"', (ROOT / "echem_analyzer" / "__init__.py").read_text(encoding="utf-8")).group(1)
@@ -16,7 +16,7 @@ ICON = {"darwin": "icon.icns", "win32": "icon.ico"}.get(sys.platform)
 a = Analysis(
     [str(ROOT / "packaging" / "entry.py")],
     pathex=[str(ROOT)],
-    datas=[],
+    datas=collect_data_files("certifi"),         # cacert.pem: the CA list the update check trusts (the frozen app has no system one to rely on)
     # every module of the package, including ones only imported inside functions
     hiddenimports=collect_submodules("echem_analyzer"),
     # big things the app never uses (PyInstaller would otherwise follow some of them through optional imports)

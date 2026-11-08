@@ -141,8 +141,38 @@ class _SafeRedirect(urllib.request.HTTPRedirectHandler):
         return super().redirect_request(req, fp, code, msg, headers, newurl)
 
 
+SYSTEM_CA_FILES = ("/etc/ssl/cert.pem", "/etc/ssl/certs/ca-certificates.crt", "/etc/pki/tls/certs/ca-bundle.crt")
+
+
+def ca_bundle() -> Optional[str]:
+    """A file of trusted root certificates: the one shipped with the app (certifi), else the system's.
+
+    A built app cannot rely on the platform: its OpenSSL looks where the machine that built it kept certificates (for the
+    macOS app, a python.org install that users do not have), so on its own it trusts nothing and every HTTPS request fails
+    with "unable to get local issuer certificate"."""
+    try:
+        import certifi
+        if os.path.isfile(certifi.where()):
+            return certifi.where()
+    except Exception:                                           # noqa: BLE001: no certifi: look for the system's list
+        pass
+    return next((p for p in SYSTEM_CA_FILES if os.path.isfile(p)), None)
+
+
+def ssl_context() -> ssl.SSLContext:
+    """The system's certificates (also the Windows store, which TLS-inspecting proxies add to) plus the bundled list."""
+    ctx = ssl.create_default_context()
+    cafile = ca_bundle()
+    if cafile:
+        try:
+            ctx.load_verify_locations(cafile=cafile)
+        except (OSError, ssl.SSLError):
+            pass
+    return ctx
+
+
 def default_opener():
-    return urllib.request.build_opener(_SafeRedirect, urllib.request.HTTPSHandler(context=ssl.create_default_context()))
+    return urllib.request.build_opener(_SafeRedirect, urllib.request.HTTPSHandler(context=ssl_context()))
 
 
 def parse_release(doc) -> Release:

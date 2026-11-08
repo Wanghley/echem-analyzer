@@ -12,6 +12,7 @@ dependencies = [
     "PySide6>=6.6",
     "xlsxwriter>=3.2",
     "openpyxl>=3.1",
+    "certifi>=2024.8.30",       # the CA list the update check trusts: a built app cannot rely on the machine having one
 ]
 
 [project.urls]
