@@ -455,6 +455,10 @@ def study_calibration(fig, cs, p: Palette, logx: bool = False) -> None:
         ax.text(0.03, 0.97, "\n".join(text), transform=ax.transAxes, ha="left", va="top", fontsize=8.8, color=p.text)
         axr.axhline(0, color=p.border_strong, lw=0.9)
         axr.plot(cs.fit.x, cs.fit.residuals, "o", color=p.trace, ms=4)
+        for k, (i, _why) in enumerate(cs.flagged_points()):          # standards the diagnostics single out: a ring, on both axes
+            ax.plot(cs.x[i], cs.y[i], "o", ms=13, mfc="none", mec=p.danger, mew=1.6, zorder=6, label="check this standard" if k == 0 else None)
+            j = int(np.flatnonzero(cs.fit_index == i)[0])
+            axr.plot(cs.fit.x[j], cs.fit.residuals[j], "o", ms=10, mfc="none", mec=p.danger, mew=1.4)
         axr.set_ylabel("Resid.")
         axr.set_xlabel(f"Concentration ({cs.conc_unit})")
         if logx:
@@ -467,7 +471,7 @@ def study_calibration(fig, cs, p: Palette, logx: bool = False) -> None:
         ax.set_xscale("log")
     ax.set_ylabel(f"{cs.options.quantity} ({cs.y_unit})")
     ax.set_title(f"Calibration · {cs.options.condition}", loc="left", color=p.text)
-    if len(colors) > 1:
+    if len(colors) > 1 or (ok and cs.flagged_points()):
         ax.legend(loc="lower right", fontsize=8)
 
 

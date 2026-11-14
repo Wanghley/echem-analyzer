@@ -275,8 +275,9 @@ def _calibration_section(cs: sa.CalibrationStudy, key: int, with_figures: bool, 
                                  "Model comparison (lower AIC is better)", align_right_from=1))
     if cs.samples:
         sec.blocks.append(TableBlock(
-            ["Sample", "Response", f"Found ({cs.conc_unit})", f"Expected ({cs.conc_unit})", "Recovery"],
+            ["Sample", "Response", f"Found ({cs.conc_unit})", "95 % interval", f"Expected ({cs.conc_unit})", "Recovery"],
             [[s.label, g(s.response, 4), f"{g(s.conc, 4)} ± {g(s.se, 2)}" if math.isfinite(s.conc) else "outside range",
+              f"{g(s.lo, 3)} – {g(s.hi, 3)}" if math.isfinite(s.lo) and math.isfinite(s.hi) else "—",
               g(s.expected, 4), f"{s.recovery_pct:.1f} %" if math.isfinite(s.recovery_pct) else "—"] for s in cs.samples],
             "Samples quantified with this calibration", align_right_from=1))
         if cs.recovery is not None:

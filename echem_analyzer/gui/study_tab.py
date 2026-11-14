@@ -429,6 +429,10 @@ class CalibrationPanel(_Panel):
         sc = Card("Samples (unknowns and spikes)", margins=10)
         sc.body.addWidget(self.samples_table, 1)
         self.side.insertWidget(self.side.count() - 1, sc)
+        self.points_table = make_table()
+        self.points_card = Card("Standards to check", margins=10)
+        self.points_card.body.addWidget(self.points_table, 1)
+        self.side.insertWidget(self.side.count() - 1, self.points_card)
         self.table.setToolTip("Model comparison: lower AIC is better.")
         self._loading = False
         self.refresh()
@@ -492,6 +496,7 @@ class CalibrationPanel(_Panel):
             self.set_kpis([("Sensitivity", "—", "", ""), ("LOD", "—", "", ""), ("Linear range", "—", "", ""), ("Model", "—", "", "")])
             self.table.setRowCount(0)
             self.samples_table.setRowCount(0)
+            self.points_card.setVisible(False)
             return
         f = cs.fom
         rng = f"{g(f.range_low, 3)} – {g(f.range_high, 3)}" if f and f.n_range else "—"
@@ -511,8 +516,13 @@ class CalibrationPanel(_Panel):
                 rows.append([cal.MODEL_LABELS[k], "—", "—", "—", "—", fit.message])
         table_into(self.table, ["Model", "R²", "adj R²", "RMSE", "AIC", "Parameters"], rows)
         srows = [[s.label, g(s.response, 4), f"{g(s.conc, 4)} ± {g(s.se, 2)}" if math.isfinite(s.conc) else "outside range",
+                  f"{g(s.lo, 3)} – {g(s.hi, 3)}" if math.isfinite(s.lo) and math.isfinite(s.hi) else "—",
                   g(s.expected, 4), f"{s.recovery_pct:.1f} %" if math.isfinite(s.recovery_pct) else "—"] for s in cs.samples]
-        table_into(self.samples_table, ["Sample", "Response", f"Found ({cs.conc_unit})", "Expected", "Recovery"], srows)
+        table_into(self.samples_table, ["Sample", "Response", f"Found ({cs.conc_unit})", "95 % interval", "Expected", "Recovery"], srows)
+        flagged = cs.flagged_points()
+        self.points_card.setVisible(bool(flagged))
+        table_into(self.points_table, ["Response", f"Concentration ({cs.conc_unit})", f"Signal ({cs.y_unit})", "Why"],
+                   [[cs.labels[i], g(cs.x[i], 4), g(cs.y[i], 4), why] for i, why in flagged])
 
 
 class ReproPanel(_Panel):

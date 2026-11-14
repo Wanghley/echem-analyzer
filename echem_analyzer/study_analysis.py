@@ -22,6 +22,10 @@ CONC_UNITS = ["M", "mM", "µM", "nM", "pM", "fM"]
 ROLES = ("standard", "blank", "sample")
 
 
+def cal_g(value: float) -> str:
+    return f"{value:.4g}"
+
+
 def conc_to(value: float, frm: str, to: str) -> float:
     try:
         return value * CONC_FACTORS[frm] / CONC_FACTORS[to]
@@ -99,6 +103,9 @@ class SampleResult:
     expected: float = NAN
     recovery_pct: float = NAN
     group: str = ""
+    lo: float = NAN                  # confidence interval of the concentration (see calibration.prediction_interval)
+    hi: float = NAN
+    ci_method: str = ""
 
 
 @dataclass
@@ -107,6 +114,7 @@ class CalibrationStudy:
     x: np.ndarray = field(default_factory=lambda: np.array([]))
     y: np.ndarray = field(default_factory=lambda: np.array([]))
     groups: list[str] = field(default_factory=list)
+    labels: list[str] = field(default_factory=list)                  # the response each standard came from
     blanks: np.ndarray = field(default_factory=lambda: np.array([]))
     y_unit: str = ""
     conc_unit: str = ""
@@ -120,11 +128,18 @@ class CalibrationStudy:
     loq: float = NAN
     samples: list[SampleResult] = field(default_factory=list)
     recovery: Optional[studies.RecoverySummary] = None
+    diagnostics: Optional[cal.PointDiagnostics] = None               # straight-line models only
+    fit_index: np.ndarray = field(default_factory=lambda: np.array([], int))     # index into x / y / labels of each point the fit used
     warnings: list[str] = field(default_factory=list)
 
     @property
     def ok(self) -> bool:
         return self.fit is not None and self.fit.ok
+
+    def flagged_points(self) -> list[tuple[int, str]]:
+        """(index into x / y / labels, why) of every standard the diagnostics single out."""
+        d = self.diagnostics
+        return [(int(self.fit_index[i]), d.reason(i)) for i in d.flagged] if d is not None else []
 
 
 def run_calibration(responses: Sequence[Response], opts: CalibrationOptions) -> CalibrationStudy:
@@ -141,6 +156,7 @@ def run_calibration(responses: Sequence[Response], opts: CalibrationOptions) -> 
         return out
     out.x, out.y = np.array(xs, float), np.array([r.value for r in std], float)
     out.groups = [r.group for r in std]
+    out.labels = [r.source_label or r.id for r in std]
     out.blanks = np.array([r.value for r in blanks], float)
     if len(set(out.x)) < 2:
         out.warnings.append("A calibration needs standards at two or more different concentrations "
@@ -159,6 +175,10 @@ def run_calibration(responses: Sequence[Response], opts: CalibrationOptions) -> 
     if not out.fit.ok:
         out.warnings.append(f"{cal.MODEL_LABELS[key]}: {out.fit.message}")
         return out
+    out.fit_index = np.flatnonzero(out.x > 0) if key == cal.LOGLIN else np.arange(len(out.x))
+    out.diagnostics = cal.diagnostics(out.fit)
+    for i, why in out.flagged_points():
+        out.warnings.append(f"Standard “{out.labels[i]}” ({cal_g(out.x[i])} {out.conc_unit}): {why}. Check the measurement before relying on the fit.")
 
     fom = cal.figures_of_merit(out.x, out.y, blank=out.blanks if out.blanks.size else None, k_lod=opts.k_lod,
                                k_loq=opts.k_loq, sigma_from=opts.sigma_from, restrict_to_range=opts.restrict_range,
@@ -190,6 +210,8 @@ def run_calibration(responses: Sequence[Response], opts: CalibrationOptions) -> 
     for r in samples:
         s = SampleResult(r.source_label or r.id, r.value, group=r.group)
         s.conc, s.se = cal.predict_concentration(use_fit, r.value)
+        iv = cal.prediction_interval(use_fit, r.value)
+        s.lo, s.hi, s.ci_method = iv.lo, iv.hi, iv.method
         if r.conc is not None:
             try:
                 s.expected = conc_to(r.conc, r.conc_unit, out.conc_unit)

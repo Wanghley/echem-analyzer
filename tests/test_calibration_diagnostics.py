@@ -152,3 +152,78 @@ def test_saturating_models_get_an_approximate_interval_and_say_so():
     assert iv.ok and iv.lo <= iv.x <= iv.hi and "approximate" in iv.method
     assert not cal.prediction_interval(fit, 500.0).ok                                  # above the plateau: cannot be inverted
     assert not cal.prediction_interval(fit, float("nan")).ok
+
+
+# ===================================================================== in the sensor study
+
+def _responses(concs, values, sample_values=(), unit="µM", group="E1"):
+    from echem_analyzer.models import Response
+    rs = [Response(id=f"s{i}", source_label=f"std {c:g} {unit}", quantity="Peak", unit="µA", value=float(v), conc=float(c), conc_unit=unit,
+                   group=group, role="standard") for i, (c, v) in enumerate(zip(concs, values))]
+    rs += [Response(id=f"u{i}", source_label=f"unknown {i + 1}", quantity="Peak", unit="µA", value=float(v), role="sample", group=group)
+           for i, v in enumerate(sample_values)]
+    return rs
+
+
+def test_the_study_names_the_standard_that_does_not_fit_and_gives_unknowns_an_interval():
+    from echem_analyzer import study_analysis as sa
+    concs = np.repeat([1, 2, 5, 10, 20, 50.0], 2)
+    values = 0.8 * concs + 0.2 + np.random.default_rng(8).normal(0, 0.15, concs.size)
+    values[7] += 6.0                                                                   # the second 10 µM standard is wrong
+    cs = sa.run_calibration(_responses(concs, values, sample_values=[8.2, 20.0]), sa.CalibrationOptions(quantity="Peak", model="linear"))
+    assert cs.diagnostics is not None and [i for i, _ in cs.flagged_points()] == [7]
+    assert cs.labels[7] == "std 10 µM" and any("Standard “std 10 µM”" in w and "far from the line" in w for w in cs.warnings)
+    low, high = cs.samples
+    assert low.lo < low.conc < low.hi and "prediction band" in low.ci_method
+    assert (low.hi - low.lo) > 0 and np.isfinite(high.lo)
+
+
+def test_a_clean_study_has_no_flags_and_a_log_linear_one_maps_points_back_correctly():
+    from echem_analyzer import study_analysis as sa
+    concs = np.repeat([1, 2, 5, 10, 20, 50.0], 2)
+    clean = sa.run_calibration(_responses(concs, 0.8 * concs + np.tile([0.05, -0.05], 6)), sa.CalibrationOptions(quantity="Peak", model="linear"))
+    assert clean.flagged_points() == [] and not any("Standard" in w for w in clean.warnings)
+    x = np.array([0.0, 1e-6, 1e-5, 1e-4, 1e-3, 1e-2])                                  # a zero standard cannot be plotted on a log axis
+    y = 200 + 59.2 * np.log10(np.maximum(x, 1e-7))
+    y[3] += 30                                                                         # 1e-4 is the odd one
+    rs = _responses(x * 1e6, y)
+    cs = sa.run_calibration(rs, sa.CalibrationOptions(quantity="Peak", model="loglinear"))
+    assert cs.model == "loglinear" and len(cs.fit_index) == 5                          # the zero was left out of the fit
+    flagged = [i for i, _ in cs.flagged_points()]
+    assert flagged and cs.labels[flagged[0]] == "std 100 µM"                           # the index refers to the right standard
+
+
+def test_saturating_models_have_no_diagnostics_and_do_not_warn_about_standards():
+    from echem_analyzer import study_analysis as sa
+    concs = np.array([1, 2, 5, 10, 20, 50, 100.0])
+    cs = sa.run_calibration(_responses(concs, 100 * concs / (15 + concs)), sa.CalibrationOptions(quantity="Peak", model="michaelis"))
+    assert cs.diagnostics is None and cs.flagged_points() == []
+
+
+# ===================================================================== in the Study tab
+
+def test_the_panel_rings_the_odd_standard_and_lists_it_with_the_samples_interval(qapp, tmp_path):
+    from helpers import make_window
+    win = make_window(tmp_path / "w")
+    concs = np.repeat([1, 2, 5, 10, 20, 50.0], 2)
+    values = 0.8 * concs + 0.2 + np.random.default_rng(8).normal(0, 0.15, concs.size)
+    values[7] += 6.0
+    win.session.responses[:] = _responses(concs, values, sample_values=[8.2])
+    win.session.responses_changed.emit()
+    panel = win.study_tab.calibration
+    panel.model.setCurrentIndex(panel.model.findData("linear"))
+    assert not panel.points_card.isHidden()
+    assert panel.points_table.rowCount() == 1 and panel.points_table.item(0, 0).text() == "std 10 µM"
+    assert "far from the line" in panel.points_table.item(0, 3).text()
+    assert panel.samples_table.horizontalHeaderItem(3).text() == "95 % interval"
+    lo, hi = panel.samples_table.item(0, 3).text().split(" – ")
+    assert float(lo) < float(panel.samples_table.item(0, 2).text().split(" ± ")[0]) < float(hi)
+    from matplotlib.colors import same_color
+    from echem_analyzer import theme
+    rings = [ln for ln in panel.plot.fig.axes[0].lines if ln.get_markerfacecolor() == "none"]
+    assert len(rings) == 1 and same_color(rings[0].get_markeredgecolor(), theme.current().danger)
+    assert rings[0].get_xdata()[0] == 10.0                                             # drawn round the 10 µM standard
+    values[7] -= 6.0                                                                   # fix the bad standard: the card goes away
+    win.session.responses[:] = _responses(concs, values, sample_values=[8.2])
+    win.session.responses_changed.emit()
+    assert panel.points_card.isHidden()
