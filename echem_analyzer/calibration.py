@@ -301,6 +301,125 @@ def predict_concentration(fit: ModelFit, y0: float, n_rep: int = 1) -> tuple[flo
     return float(x0), float(se)
 
 
+
+# --------------------------------------------------------------------------- diagnostics and intervals
+
+@dataclass
+class PointDiagnostics:
+    """How much each standard shapes a straight-line calibration (linear, or log-linear in log10 of the concentration)."""
+    model: str
+    leverage: np.ndarray           # h_i: how far a point's x is from the others (the sum is 2, the number of parameters)
+    studentized: np.ndarray        # externally studentized residual: the residual in units of the SD of a fit without that point
+    cooks: np.ndarray              # Cook's distance: how far deleting the point moves the fitted line
+    outlier_limit: float           # |studentized| beyond this is an outlier (Bonferroni-corrected, 5 % for the whole set)
+    outliers: list[int] = field(default_factory=list)
+    influential: list[int] = field(default_factory=list)
+    dof: int = 0
+
+    @property
+    def flagged(self) -> list[int]:
+        return sorted(set(self.outliers) | set(self.influential))
+
+    def reason(self, i: int) -> str:
+        why = []
+        if i in self.outliers:
+            why.append(f"far from the line (studentized residual {self.studentized[i]:+.1f}, limit ±{self.outlier_limit:.1f})")
+        if i in self.influential:
+            why.append(f"moves the line a lot (Cook's distance {self.cooks[i]:.2f})")
+        return "; ".join(why)
+
+
+def diagnostics(fit: ModelFit, alpha: float = 0.05, cooks_limit: float = 1.0) -> Optional[PointDiagnostics]:
+    """Leverage, studentized residuals and Cook's distance of a linear or log-linear calibration; None for any other model.
+
+    A point is an *outlier* when its externally studentized residual is beyond the two-sided limit of a t distribution with
+    n − 3 degrees of freedom at ``alpha``/n (a Bonferroni correction, so a clean calibration is wrongly flagged in about 5 % of
+    cases at most, however many standards it has) and *influential* when Cook's distance exceeds ``cooks_limit``.  Needs four
+    points or more; with fewer there is nothing to compare a point against.
+    """
+    if not fit.ok or fit.model not in (LINEAR, LOGLIN):
+        return None
+    x = np.log10(fit.x) if fit.model == LOGLIN else np.asarray(fit.x, float)
+    n, p = len(x), 2
+    if n < p + 2 or np.ptp(x) == 0:
+        return None
+    design = np.column_stack([np.ones(n), x])
+    h = np.einsum("ij,jk,ik->i", design, np.linalg.inv(design.T @ design), design)
+    e = np.asarray(fit.residuals, float)
+    dof = n - p
+    sse = float(np.sum(e ** 2))
+    limit = float(stats.t.ppf(1.0 - alpha / (2.0 * n), dof - 1))
+    if sse <= 1e-300:                                           # a perfect fit: nothing deviates, nothing to flag
+        zeros = np.zeros(n)
+        return PointDiagnostics(fit.model, h, zeros, zeros.copy(), limit, dof=dof)
+    room = np.maximum(1.0 - h, 1e-12)
+    s2 = sse / dof
+    s2_without = np.maximum((sse - e ** 2 / room) / (dof - 1), 1e-300)
+    studentized = e / np.sqrt(s2_without * room)
+    cooks = (e ** 2 / (s2 * room ** 2)) * h / p
+    return PointDiagnostics(fit.model, h, studentized, cooks, limit,
+                            outliers=[int(i) for i in np.flatnonzero(np.abs(studentized) > limit)],
+                            influential=[int(i) for i in np.flatnonzero(cooks > cooks_limit)], dof=dof)
+
+
+@dataclass
+class ConcInterval:
+    """A concentration read off a calibration with its confidence interval."""
+    x: float = NAN
+    lo: float = NAN
+    hi: float = NAN
+    level: float = 0.95
+    method: str = ""
+
+    @property
+    def ok(self) -> bool:
+        return math.isfinite(self.lo) and math.isfinite(self.hi)
+
+
+def prediction_interval(fit: ModelFit, y0: float, n_rep: int = 1, level: float = 0.95) -> ConcInterval:
+    """The concentration for a response ``y0`` (mean of ``n_rep`` readings) with a ``level`` confidence interval.
+
+    Linear and log-linear calibrations: the interval is where the calibration line stays within the ``level`` prediction band of
+    the response (Fieller's solution), so it is exact for the straight-line model and asymmetric when the line is poorly
+    determined; for a log-linear fit it is computed in log10(x) and transformed back.  If the slope is not distinguishable from
+    zero at this level the concentration cannot be bounded and the interval is empty.  Saturating models (Michaelis–Menten, Hill)
+    use x ± t·SE from :func:`predict_concentration`, which is approximate.
+    """
+    out = ConcInterval(level=level)
+    if not fit.ok or not math.isfinite(y0):
+        return out
+    n = len(fit.x)
+    x0, se = predict_concentration(fit, y0, n_rep)
+    if not math.isfinite(x0):
+        return out
+    out.x = x0
+    if fit.model in (LINEAR, LOGLIN):
+        if n < 3:
+            return out
+        xs = np.log10(fit.x) if fit.model == LOGLIN else np.asarray(fit.x, float)
+        b = fit.p("slope")
+        xbar, ybar = float(xs.mean()), float(np.mean(fit.y))
+        sxx = float(np.sum((xs - xbar) ** 2))
+        s2 = float(np.sum(fit.residuals ** 2)) / (n - 2)
+        t2s2 = float(stats.t.ppf(0.5 + level / 2.0, n - 2)) ** 2 * s2
+        g, c0, d = t2s2 / sxx, t2s2 * (1.0 / n_rep + 1.0 / n), y0 - ybar
+        out.method = f"inverse of the {level * 100:g} % prediction band"
+        if b * b <= g:
+            return out                                            # the slope is not significant: no finite interval
+        root = math.sqrt(max(g * d * d + c0 * (b * b - g), 0.0))
+        u = sorted(((b * d - root) / (b * b - g), (b * d + root) / (b * b - g)))
+        lo, hi = xbar + u[0], xbar + u[1]
+        out.lo, out.hi = (10.0 ** lo, 10.0 ** hi) if fit.model == LOGLIN else (lo, hi)
+        return out
+    if not math.isfinite(se):
+        return out
+    dof = max(n - len(fit.params), 1)
+    half = float(stats.t.ppf(0.5 + level / 2.0, dof)) * se
+    out.lo, out.hi = max(x0 - half, 0.0), x0 + half
+    out.method = f"x ± t·SE ({level * 100:g} %, approximate)"
+    return out
+
+
 def replicate_summary(x, y) -> list[tuple[float, float, float, int]]:
     """(concentration, mean, sd, n) for every distinct concentration (sd is NaN for n = 1)."""
     x, y = _clean(x, y)
