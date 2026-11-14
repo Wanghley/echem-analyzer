@@ -220,6 +220,13 @@ def build_report(data: ProjectData, with_figures: bool = True) -> Report:
         overview.blocks.append(NoteBlock(m.notes))
     overview.blocks.append(TableBlock(["Data file", "Format", "CA runs", "CV scans", "Other measurements"], inv,
                                       "Data files in this project", align_right_from=2))
+    from . import dataqc
+    checks = dataqc.check_files(data.files)
+    findings = [[file_short(c.source), curve_short_label(c), fl.message]
+                for df in data.files for c in df.curves for fl in checks.get(c.uid, [])]
+    if findings:                                       # only when there is something to say; a clean project stays short
+        overview.blocks.append(TableBlock(["File", "Measurement", "Finding"], findings,
+                                          "Data checks: look at these before relying on the numbers", align_right_from=3))
     sections.append(overview)
 
     ca_runs, cv_runs = analysed_runs(data)

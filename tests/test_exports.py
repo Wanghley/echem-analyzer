@@ -266,3 +266,24 @@ def test_plots_can_be_left_out_of_a_project(data, tmp_path):
     with zipfile.ZipFile(p) as z:
         assert not [n for n in z.namelist() if n.startswith("plots/")]
         assert "results/ca_summary.csv" in z.namelist()
+
+
+def test_the_report_lists_import_check_findings_only_when_there_are_some(tmp_path):
+    import synth
+    from echem_analyzer import readers
+    from echem_analyzer.project import ProjectData
+    from echem_analyzer.report import TableBlock, build_report
+    t = np.linspace(0, 200, 801)
+    y = 1.0 + 0.5 * np.minimum(np.floor(t / 40), 4) + np.random.default_rng(2).normal(0, 0.01, t.size)
+    synth.write_pstrace_csv(tmp_path / "good.csv", [("CA: i vs t", t, y, "s", "µA")])
+    synth.write_pstrace_csv(tmp_path / "clipped.csv", [("CA: i vs t", t, np.minimum(y, 2.0), "s", "µA")])
+
+    def checks_table(*names):
+        rep = build_report(ProjectData(files=[readers.load(tmp_path / n) for n in names]), with_figures=False)
+        tables = [b for sec in rep.sections for b in sec.blocks if isinstance(b, TableBlock) and b.caption.startswith("Data checks")]
+        return tables[0] if tables else None
+
+    assert checks_table("good.csv") is None
+    table = checks_table("good.csv", "clipped.csv")
+    assert table.header == ["File", "Measurement", "Finding"] and len(table.rows) == 1
+    assert "clipped" in table.rows[0][0] and "stays at exactly" in table.rows[0][2]
