@@ -35,11 +35,12 @@ class StudyResults:
     repros: list[sa.ReproStudy] = field(default_factory=list)
     stabilities: list[sa.StabilityStudy] = field(default_factory=list)
     selectivities: list[sa.SelectivityStudy] = field(default_factory=list)
+    temperatures: list[sa.TemperatureStudy] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)           # studies that could not be computed, and why
 
     @property
     def empty(self) -> bool:
-        return not (self.calibrations or self.repros or self.stabilities or self.selectivities)
+        return not (self.calibrations or self.repros or self.stabilities or self.selectivities or self.temperatures)
 
 
 def _conc_levels(rs: list[Response], quantity: str, condition: str) -> set[float]:
@@ -166,6 +167,34 @@ def compute_study(responses: list[Response], extras: dict) -> StudyResults:
         if len(out.stabilities) >= MAX_PER_KIND:
             break
 
+    # ---- temperature: standards measured at two or more temperatures
+    temp_st = st.get("temperature") or {}
+    for q in _first_stored_then_rest(quantities, temp_st.get("quantity", "")):
+        same = temp_st.get("quantity") == q
+        warm = [r for r in sa.usable(responses) if r.quantity == q and r.role == "standard" and r.temp_c is not None]
+        if len({round(r.temp_c, 2) for r in warm}) < 2:
+            continue
+        conds = sorted({r.condition for r in warm})
+        cond = temp_st.get("condition") if same and temp_st.get("condition") in conds else ("analyte" if "analyte" in conds else conds[0])
+        conc, unit = None, ""
+        if same and temp_st.get("conc"):
+            try:
+                a, b = str(temp_st["conc"]).split()
+                conc, unit = float(a), b
+            except ValueError:
+                conc = None
+        ref = temp_st.get("ref_temp") if same else None
+        ref = float(ref) if isinstance(ref, (int, float)) and not isinstance(ref, bool) and -50 < ref < 150 else 25.0
+        try:
+            ts = sa.run_temperature(responses, q, cond, conc, unit, _clean_option("group", temp_st.get("group") or None, None) if same else None, ref)
+        except Exception as exc:  # noqa: BLE001
+            out.errors.append(f"Temperature of {q}: {exc}")
+            continue
+        if ts.ok:
+            out.temperatures.append(ts)
+        if len(out.temperatures) >= MAX_PER_KIND:
+            break
+
     # ---- selectivity: the analyte and at least one other condition
     sel_st = st.get("selectivity") or {}
     for q in _first_stored_then_rest(quantities, sel_st.get("quantity", "")):
@@ -203,10 +232,12 @@ def _fmt_time(t: Optional[float]) -> str:
 
 
 def responses_table(responses: list[Response]) -> tuple[list[str], list[list[str]]]:
-    header = ["Measurement", "Quantity", "Condition", "Electrode", "Role", "Used", "Value", "± SD", "Unit", "Conc.", "Time"]
+    with_temp = any(r.temp_c is not None for r in responses)         # the temperature column only when some response has one
+    header = ["Measurement", "Quantity", "Condition", "Electrode", "Role", "Used", "Value", "± SD", "Unit", "Conc.", "Time"] + (["T (°C)"] if with_temp else [])
     rows = [[r.source_label or r.id, r.quantity, r.condition, r.group, r.role, "yes" if r.use else "no", g(r.value, 5),
              g(r.sd, 3) if r.sd is not None else "", r.unit,
-             f"{g(r.conc, 4)} {r.conc_unit}" if r.conc is not None else "", _fmt_time(r.time)] for r in responses]
+             f"{g(r.conc, 4)} {r.conc_unit}" if r.conc is not None else "", _fmt_time(r.time)] + ([_fmt_time(r.temp_c)] if with_temp else [])
+            for r in responses]
     return header, rows
 
 
@@ -349,6 +380,26 @@ def _stability_section(st: sa.StabilityStudy, key: int, with_figures: bool, inde
     return sec
 
 
+def _temperature_section(ts: sa.TemperatureStudy, key: int, with_figures: bool, index: int) -> Section:
+    sec = Section(f"Temperature · {ts.quantity}", subtitle=f"{ts.condition}" + (f" · {g(ts.conc)} {ts.conc_unit}" if ts.conc is not None else ""),
+                  kind="study", page_break=index == 0)
+    sec.blocks.append(KeyValueBlock([
+        ("Temperature coefficient", f"{ts.alpha:+.3g} ± {g(ts.alpha_se, 2)} % per °C"),
+        (f"Response at {g(ts.ref_temp)} °C", f"{g(ts.y_ref, 4)} {ts.y_unit}"),
+        ("Slope", f"{g(ts.slope, 4)} {ts.y_unit} per °C"), ("R²", g(ts.r2, 4)),
+        ("RSD of the responses", f"{g(ts.rsd_raw, 3)} % as measured, {g(ts.rsd_compensated, 3)} % referred to {g(ts.ref_temp)} °C"),
+        ("Points", f"{len(ts.t)} at {len(ts.rows)} temperatures")], "Results"))
+    for w in ts.warnings:
+        sec.blocks.append(NoteBlock(w, "warning"))
+    if with_figures:
+        sec.blocks.append(_figure(f"study/temperature_{index}_{safe_name(ts.quantity)}.png", "Response against temperature, as measured and referred to the reference temperature",
+                                  ("study-temp", key, index), lambda fig, p: plots.study_temperature(fig, ts, p), (6.4, 3.9), 0.62))
+    sec.blocks.append(TableBlock(["Temperature (°C)", "n", f"Mean ({ts.y_unit})", "SD", f"Referred to {g(ts.ref_temp)} °C"],
+                                 [[f"{row.temp:g}", str(row.n), g(row.mean, 5), g(row.sd, 3), g(row.compensated_mean, 5)] for row in ts.rows],
+                                 "By temperature", align_right_from=0))
+    return sec
+
+
 def _selectivity_section(ss: sa.SelectivityStudy, key: int, with_figures: bool, index: int) -> Section:
     sec = Section(f"Selectivity · {ss.quantity}", subtitle=f"interferents against {ss.analyte} at {g(ss.analyte_conc, 4)} {ss.conc_unit}",
                   kind="study", page_break=index == 0)
@@ -388,6 +439,7 @@ def study_sections(data: ProjectData, with_figures: bool = True, results: Option
     out += [_calibration_section(cs, key, with_figures, i) for i, cs in enumerate(results.calibrations)]
     out += [_repro_section(r, key, with_figures, i) for i, r in enumerate(results.repros)]
     out += [_stability_section(s, key, with_figures, i) for i, s in enumerate(results.stabilities)]
+    out += [_temperature_section(s, key, with_figures, i) for i, s in enumerate(results.temperatures)]
     out += [_selectivity_section(s, key, with_figures, i) for i, s in enumerate(results.selectivities)]
     return out
 

@@ -103,8 +103,11 @@ class ManualDialog(QDialog):
         self.conc_unit.setCurrentText(prefs.get("conc_unit"))
         self.condition = QLineEdit("analyte")
         self.group = QLineEdit()
+        self.temp = QLineEdit()
+        self.temp.setPlaceholderText("optional")
         for label, w in (("Quantity", self.quantity), ("Unit", self.unit), ("Value", self.value), ("Concentration", self.conc),
-                         ("Concentration unit", self.conc_unit), ("Condition", self.condition), ("Electrode / group", self.group)):
+                         ("Concentration unit", self.conc_unit), ("Condition", self.condition), ("Electrode / group", self.group),
+                         ("Temperature (°C)", self.temp)):
             form.addRow(label, w)
         box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         box.accepted.connect(self.accept)
@@ -112,9 +115,13 @@ class ManualDialog(QDialog):
         form.addRow(box)
 
     def values(self) -> dict:
+        try:
+            temp = float(self.temp.text().strip().replace(",", ".")) if self.temp.text().strip() else None
+        except ValueError:
+            temp = None
         return dict(quantity=self.quantity.text().strip() or "Value", unit=self.unit.text().strip(), value=self.value.value(),
                     conc=self.conc.value() or None, conc_unit=self.conc_unit.currentText(),
-                    condition=self.condition.text().strip() or "analyte", group=self.group.text().strip())
+                    condition=self.condition.text().strip() or "analyte", group=self.group.text().strip(), temp_c=temp)
 
 
 class BulkDialog(QDialog):
@@ -124,14 +131,14 @@ class BulkDialog(QDialog):
         super().__init__(parent)
         self.setWindowTitle(f"Set values for {n} selected row(s)")
         form = QFormLayout(self)
-        self.condition, self.group, self.time = QLineEdit(), QLineEdit(), QLineEdit()
+        self.condition, self.group, self.time, self.temp = QLineEdit(), QLineEdit(), QLineEdit(), QLineEdit()
         self.conc = QLineEdit()
         self.conc_unit = QComboBox()
         self.conc_unit.addItems(["(unchanged)"] + sa.CONC_UNITS)
         self.role = QComboBox()
         self.role.addItems(["(unchanged)"] + list(sa.ROLES))
         for label, w in (("Concentration", self.conc), ("Concentration unit", self.conc_unit), ("Condition", self.condition),
-                         ("Electrode / group", self.group), ("Time", self.time), ("Role", self.role)):
+                         ("Electrode / group", self.group), ("Time", self.time), ("Temperature (°C)", self.temp), ("Role", self.role)):
             form.addRow(label, w)
         form.addRow(hint("Leave a field empty to keep each row's current value."))
         box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
@@ -144,7 +151,7 @@ class BulkDialog(QDialog):
         for key, w in (("condition", self.condition), ("group", self.group)):
             if w.text().strip():
                 out[key] = w.text().strip()
-        for key, w in (("conc", self.conc), ("time", self.time)):
+        for key, w in (("conc", self.conc), ("time", self.time), ("temp_c", self.temp)):
             if w.text().strip():
                 try:
                     out[key] = float(w.text().strip().replace(",", "."))
@@ -159,8 +166,8 @@ class BulkDialog(QDialog):
 
 # =============================================================================== responses table
 
-COLS = ["Use", "Source", "Technique", "Quantity", "Value", "Unit", "Conc", "Conc unit", "Condition", "Group", "Time", "Role", "Note"]
-C_USE, C_SRC, C_TECH, C_QTY, C_VAL, C_UNIT, C_CONC, C_CUNIT, C_COND, C_GRP, C_TIME, C_ROLE, C_NOTE = range(13)
+COLS = ["Use", "Source", "Technique", "Quantity", "Value", "Unit", "Conc", "Conc unit", "Condition", "Group", "Time", "T (°C)", "Role", "Note"]
+C_USE, C_SRC, C_TECH, C_QTY, C_VAL, C_UNIT, C_CONC, C_CUNIT, C_COND, C_GRP, C_TIME, C_TEMP, C_ROLE, C_NOTE = range(14)
 
 
 class ResponsesPanel(QWidget):
@@ -215,7 +222,7 @@ class ResponsesPanel(QWidget):
                         fl |= Qt.ItemIsUserCheckable
                         it.setCheckState(Qt.Checked if check else Qt.Unchecked)
                     it.setFlags(fl)
-                    if col in (C_VAL, C_CONC, C_TIME):
+                    if col in (C_VAL, C_CONC, C_TIME, C_TEMP):
                         it.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
                     self.table.setItem(i, col, it)
                 put(C_USE, "", check=r.use)
@@ -229,6 +236,7 @@ class ResponsesPanel(QWidget):
                 put(C_COND, r.condition, edit=True)
                 put(C_GRP, r.group, edit=True)
                 put(C_TIME, "" if r.time is None else f"{r.time:g}", edit=True)
+                put(C_TEMP, "" if r.temp_c is None else f"{r.temp_c:g}", edit=True)
                 put(C_ROLE, r.role, edit=True)
                 put(C_NOTE, r.note, edit=True)
             self.table.resizeColumnsToContents()
@@ -244,9 +252,9 @@ class ResponsesPanel(QWidget):
         try:
             if col == C_USE:
                 self.session.update_response(r.id, use=it.checkState() == Qt.Checked)
-            elif col in (C_CONC, C_TIME):
+            elif col in (C_CONC, C_TIME, C_TEMP):
                 val = None if not text else float(text.replace(",", "."))
-                self.session.update_response(r.id, **{"conc" if col == C_CONC else "time": val})
+                self.session.update_response(r.id, **{{C_CONC: "conc", C_TIME: "time", C_TEMP: "temp_c"}[col]: val})
             elif col == C_CUNIT:
                 self.session.update_response(r.id, conc_unit=text if text in sa.CONC_FACTORS else r.conc_unit)
             elif col == C_ROLE:
@@ -725,6 +733,93 @@ class StabilityPanel(_Panel):
                    [[f"{t:g}", g(y, 5), f"{rp:.1f}"] for t, y, rp in zip(r.t, r.y, r.retention_pct)])
 
 
+class TemperaturePanel(_Panel):
+    key = "temperature"
+
+    def __init__(self, session: Session):
+        super().__init__(session)
+        self.study: Optional[sa.TemperatureStudy] = None
+        self.quantity, self.condition, self.conc, self.group = (QComboBox() for _ in range(4))
+        self.ref = QDoubleSpinBox()
+        self.ref.setRange(-20, 80)
+        self.ref.setDecimals(1)
+        self.ref.setSuffix(" °C")
+        self.ref.setValue(25.0)
+        self.ref.setKeyboardTracking(False)
+        self.ref.setToolTip("The temperature everything is referred to; the coefficient is a percentage of the response here.")
+        for label, w in (("Quantity", self.quantity), ("Condition", self.condition), ("Concentration", self.conc),
+                         ("Electrode", self.group), ("Reference temperature", self.ref)):
+            self.form.addRow(label, w)
+        self.form.addRow(hint("Measure the same standard at several temperatures and fill the T (°C) column in the Responses table. "
+                              "Choose one concentration: a percentage coefficient only makes sense at one."))
+        self.quantity.currentIndexChanged.connect(self._refill_dependent)
+        for w in (self.quantity, self.condition, self.conc, self.group):
+            w.currentIndexChanged.connect(self._changed)
+        self.ref.valueChanged.connect(self._changed)
+        self._loading = False
+        self.refresh()
+
+    def _refill_dependent(self) -> None:
+        rs, q = self.session.responses, self.quantity.currentText()
+        fill_combo(self.condition, sa.conditions(rs, q))
+        fill_combo(self.group, sa.groups(rs, q), first=ALL_GROUPS)
+        levels = sorted({f"{r.conc:g} {r.conc_unit}" for r in sa.usable(rs) if r.quantity == q and r.conc is not None and r.temp_c is not None})
+        fill_combo(self.conc, levels, first=ALL_CONC)
+
+    def refresh(self) -> None:
+        self._loading = True
+        st = self.stored()
+        fill_combo(self.quantity, sa.quantities(self.session.responses), keep=st.get("quantity"))
+        self._refill_dependent()
+        for cb, key in ((self.condition, "condition"), (self.conc, "conc"), (self.group, "group")):
+            i = cb.findText(st.get(key, ""))
+            if i >= 0:
+                cb.setCurrentIndex(i)
+        if isinstance(st.get("ref_temp"), (int, float)):
+            with QSignalBlocker(self.ref):
+                self.ref.setValue(float(st["ref_temp"]))
+        self._loading = False
+        self.recompute()
+
+    def _changed(self, *_a) -> None:
+        if not self._loading:
+            self.store({"quantity": self.quantity.currentText(), "condition": self.condition.currentText(),
+                        "conc": self.conc.currentText() if self.conc.currentIndex() > 0 else "",
+                        "group": self.group.currentText() if self.group.currentIndex() > 0 else "", "ref_temp": self.ref.value()})
+            self.recompute()
+
+    def recompute(self) -> None:
+        q = self.quantity.currentText()
+        empty_kpis = [("Coefficient", "—", "", ""), ("Reference response", "—", "", ""), ("R²", "—", "", ""), ("RSD", "—", "", "")]
+        if not q:
+            self.study = None
+            plots.study_temperature(self.plot.fig, None, theme.current())
+            self.plot.redraw()
+            self.set_kpis(empty_kpis)
+            self.table.setRowCount(0)
+            self.show_warnings([])
+            return
+        conc, unit = None, ""
+        if self.conc.currentIndex() > 0:
+            txt = self.conc.currentText().split()
+            conc, unit = float(txt[0]), txt[1]
+        self.study = ts = sa.run_temperature(self.session.responses, q, self.condition.currentText() or "analyte", conc, unit or "",
+                                             self.group.currentText() if self.group.currentIndex() > 0 else None, self.ref.value())
+        plots.study_temperature(self.plot.fig, ts, theme.current())
+        self.plot.redraw()
+        self.show_warnings(ts.warnings)
+        if not ts.ok:
+            self.set_kpis(empty_kpis)
+            self.table.setRowCount(0)
+            return
+        self.set_kpis([("Coefficient", f"{ts.alpha:+.3g}", f"% per °C ± {g(ts.alpha_se, 2)}", ""),
+                       (f"At {ts.ref_temp:g} °C", g(ts.y_ref, 4), ts.y_unit, ""),
+                       ("R²", f"{ts.r2:.3f}", "linear in temperature", "success" if ts.r2 >= 0.98 else ("warning" if ts.r2 < 0.9 else "")),
+                       ("RSD", f"{ts.rsd_raw:.1f} → {ts.rsd_compensated:.1f} %", "as measured → compensated", "")])
+        table_into(self.table, ["Temperature (°C)", "n", f"Mean ({ts.y_unit})", "SD", f"Referred to {ts.ref_temp:g} °C"],
+                   [[f"{r.temp:g}", str(r.n), g(r.mean, 5), g(r.sd, 3), g(r.compensated_mean, 5)] for r in ts.rows])
+
+
 class SelectivityPanel(_Panel):
     key = "selectivity"
 
@@ -821,11 +916,13 @@ class StudyTab(QWidget):
         self.stability = StabilityPanel(session)
         self.selectivity = SelectivityPanel(session)
         self.recovery = RecoveryPanel(session, self.calibration)
+        self.temperature = TemperaturePanel(session)
         self.tabs = QTabWidget()
         self.tabs.setObjectName("SubTabs")
         self.tabs.setDocumentMode(True)
         for w, name in ((self.responses, "Responses"), (self.calibration, "Calibration"), (self.repro, "Reproducibility"),
-                        (self.stability, "Stability"), (self.selectivity, "Selectivity"), (self.recovery, "Recovery")):
+                        (self.stability, "Stability"), (self.selectivity, "Selectivity"), (self.recovery, "Recovery"),
+                        (self.temperature, "Temperature")):             # last, so a saved tab index still points at the same tab
             self.tabs.addTab(w, name)
         lay = QVBoxLayout(self)
         lay.setContentsMargins(16, 12, 16, 12)
@@ -833,7 +930,7 @@ class StudyTab(QWidget):
         self.tabs.currentChanged.connect(lambda _i: self.recovery.recompute())
 
     def refresh_all(self) -> None:
-        for p in (self.calibration, self.repro, self.stability, self.selectivity):
+        for p in (self.calibration, self.repro, self.stability, self.selectivity, self.temperature):
             p.refresh()
         self.responses.rebuild()
         self.recovery.recompute()

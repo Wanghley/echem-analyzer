@@ -572,6 +572,42 @@ def study_stability(fig, st, p: Palette) -> None:
     ax.set_title(f"Stability · {st.quantity}", loc="left", color=p.text)
 
 
+def study_temperature(fig, ts, p: Palette) -> None:
+    """Response against temperature with its straight-line fit, and the same responses referred to the reference temperature."""
+    from scipy import stats
+    fig.clear()
+    ax = fig.add_subplot(111)
+    if ts is None or not ts.ok:
+        _note(ax, "Give the standards a temperature (the T (°C) column of the Responses table)\nat two or more temperatures to draw this.", p)
+        ax.set_axis_off()
+        return
+    colors = _group_colors(ts.groups, p)
+    for g_ in sorted(set(ts.groups)):
+        m = np.array([gg == g_ for gg in ts.groups])
+        ax.plot(ts.t[m], ts.y[m], "o", color=colors[g_ or ""], ms=6.5, mec=p.plot_bg, mew=0.8, zorder=4,
+                label=(g_ or "measured") if len(colors) > 1 else "measured")
+    lo, hi = min(ts.t.min(), ts.ref_temp), max(ts.t.max(), ts.ref_temp)
+    tt = np.linspace(lo, hi, 120)
+    line = ts.fit.predict(tt - ts.ref_temp)
+    n = len(ts.t)
+    if n > 2:                                                    # the 95 % band of the line
+        x = ts.t - ts.ref_temp
+        s = float(np.sqrt(np.sum(ts.fit.residuals ** 2) / (n - 2)))
+        half = stats.t.ppf(0.975, n - 2) * s * np.sqrt(1.0 / n + ((tt - ts.ref_temp) - x.mean()) ** 2 / np.sum((x - x.mean()) ** 2))
+        ax.fill_between(tt, line - half, line + half, color=p.window, alpha=0.18 if p.name == "light" else 0.24, lw=0, zorder=1)
+    ax.plot(tt, line, color=p.fit, lw=1.7, zorder=3)
+    ax.plot(ts.t, ts.y_compensated, "o", mfc="none", mec=p.extrap, ms=8, mew=1.3, zorder=5, label=f"referred to {ts.ref_temp:g} °C")
+    ax.axhline(ts.y_ref, color=p.extrap, lw=1.0, ls=":", zorder=2)
+    ax.axvline(ts.ref_temp, color=p.extrap, lw=1.0, ls=":", zorder=2)
+    text = [f"α = {ts.alpha:+.3g} ± {ts.alpha_se:.2g} % per °C   R² = {ts.r2:.3f}",
+            f"at {ts.ref_temp:g} °C: {ts.y_ref:.4g} {ts.y_unit}", f"RSD {ts.rsd_raw:.1f} % → {ts.rsd_compensated:.1f} % compensated"]
+    ax.text(0.03, 0.97, "\n".join(text), transform=ax.transAxes, ha="left", va="top", fontsize=8.8, color=p.text)
+    ax.set_xlabel("Temperature (°C)")
+    ax.set_ylabel(f"{ts.quantity} ({ts.y_unit})")
+    ax.set_title(f"Temperature · {ts.condition}" + (f" · {ts.conc:g} {ts.conc_unit}" if ts.conc is not None else ""), loc="left", color=p.text)
+    ax.legend(loc="lower right", fontsize=8)
+
+
 def study_selectivity(fig, ss, p: Palette) -> None:
     fig.clear()
     ax = fig.add_subplot(111)

@@ -261,3 +261,75 @@ def test_temperature_survives_saving_and_old_projects_load_without_it(tmp_path):
                 data = json.dumps(doc).encode()
             zout.writestr(item, data)
     assert [r.temp_c for r in load_project(old).responses] == [None, None, None]
+
+
+# ===================================================================== temperature in the Study tab and the report
+
+def test_the_temperature_panel_shows_the_coefficient_and_remembers_its_settings(qapp, tmp_path):
+    from helpers import make_window
+    win = make_window(tmp_path / "w")
+    st = win.study_tab
+    assert st.tabs.tabText(st.tabs.count() - 1) == "Temperature"                        # last: saved tab indices keep their meaning
+    win.session.responses[:] = temp_responses([15, 20, 25, 30, 35], alpha=2.0, reps=2, noise=0.4)
+    win.session.responses_changed.emit()
+    panel = st.temperature
+    assert [c.label.text() for c in panel.kpis if not c.isHidden()] == ["COEFFICIENT", "AT 25 °C", "R²", "RSD"]
+    assert panel.kpis[0].value.text().startswith("+2") and panel.table.rowCount() == 5
+    assert panel.study.ok and "→" in panel.kpis[3].value.text()
+    panel.ref.setValue(37.0)
+    assert panel.study.ref_temp == 37.0 and panel.kpis[1].label.text() == "AT 37 °C"
+    assert win.session.extras["study"]["temperature"]["ref_temp"] == 37.0
+    panel.refresh()                                                                      # a refresh restores it
+    assert panel.ref.value() == 37.0
+    win.session.responses[:] = temp_responses([25, 25, 25])                              # one temperature only: nothing to fit
+    win.session.responses_changed.emit()
+    assert not panel.study.ok and panel.kpis[0].value.text() == "—" and panel.table.rowCount() == 0
+    assert "two or more temperatures" in panel.notice.text()
+
+
+def test_temperatures_are_entered_in_the_responses_table_and_the_dialogs(qapp, tmp_path):
+    from PySide6.QtCore import Qt
+    from helpers import make_window
+    from echem_analyzer.gui import study_tab as stab
+    win = make_window(tmp_path / "w")
+    win.session.responses[:] = temp_responses([None] * 0 + [25.0, 30.0], alpha=1.0)
+    for r in win.session.responses:
+        r.temp_c = None
+    win.session.responses_changed.emit()
+    rp = win.study_tab.responses
+    assert rp.table.horizontalHeaderItem(stab.C_TEMP).text() == "T (°C)" and rp.table.columnCount() == 14
+    assert rp.table.item(0, stab.C_TEMP).text() == "" and rp.table.item(0, stab.C_TEMP).flags() & Qt.ItemIsEditable
+    rp.table.item(0, stab.C_TEMP).setText("27,5")                                       # a decimal comma is accepted
+    assert win.session.responses[0].temp_c == 27.5 and rp.table.item(0, stab.C_TEMP).text() == "27.5"
+    rp.table.item(0, stab.C_TEMP).setText("")                                            # blank clears it
+    assert win.session.responses[0].temp_c is None
+    bulk = stab.BulkDialog(2)
+    bulk.temp.setText("31")
+    assert bulk.changes() == {"temp_c": 31.0}
+    manual = stab.ManualDialog()
+    manual.temp.setText("36.6")
+    assert manual.values()["temp_c"] == 36.6
+    manual.temp.setText("warm")
+    assert manual.values()["temp_c"] is None
+
+
+def test_the_report_has_a_temperature_section_when_standards_have_temperatures(tmp_path):
+    from echem_analyzer import study_report
+    from echem_analyzer.project import ProjectData
+    rs = temp_responses([15, 20, 25, 30, 35], alpha=2.0, reps=2, noise=0.4)
+    data = ProjectData(responses=rs, extras={"study": {"temperature": {"quantity": "Signal", "ref_temp": 30.0}}})
+    sections = study_report.study_sections(data, with_figures=True)
+    (sec,) = [s for s in sections if s.title.startswith("Temperature")]
+    kv = dict(next(b for b in sec.blocks if isinstance(b, study_report.KeyValueBlock)).rows)
+    assert kv["Temperature coefficient"].startswith("+1.82") and "Response at 30 °C" in kv        # 2 nA/°C on 110 nA at 30 °C = 1.82 %/°C
+    assert kv["Response at 30 °C"].startswith("110")
+    assert any(isinstance(b, study_report.FigureBlock) and b.png.startswith(b"\x89PNG") for b in sec.blocks)
+    table = next(b for b in sec.blocks if isinstance(b, study_report.TableBlock))
+    assert [row[0] for row in table.rows] == ["15", "20", "25", "30", "35"] and [row[1] for row in table.rows] == ["2"] * 5
+    plain = study_report.compute_study([r for r in rs if r.temp_c == 25.0], {})
+    assert plain.temperatures == []                                                      # one temperature: no section
+    header, rows = study_report.responses_table(rs)
+    assert header[-1] == "T (°C)" and rows[0][-1] == "15"
+    for r in rs:
+        r.temp_c = None
+    assert "T (°C)" not in study_report.responses_table(rs)[0]                           # the column appears only when it has something to say
