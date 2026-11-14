@@ -340,6 +340,10 @@ class StaircaseAnalyzer(Analyzer):
         Field("sharp", "Step shape", "choice", "auto", tip="Sharp steps are told apart from smooth decays by how abruptly "
               "they happen; potentiometric and slow biosensor responses take seconds and need 'allow slow'.",
               choices=(("Automatic (by technique)", "auto"), ("Sharp steps only", "sharp"), ("Allow slow responses", "slow"))),
+        Field("opposite", "Steps against the first", "choice", "ignore", tip="In an additions experiment a jump the other way is an "
+              "artefact (a bubble, stirring) and is only reported. For a reversible sensor that is washed out, treat it as the "
+              "sensor recovering: its time is reported as the recovery time.",
+              choices=(("Ignore (not additions)", "ignore"), ("Recovery steps", "recovery"))),
         Field("expected", "Expected steps", "int", 0, 0, 50, 1, 0, "", "0 = automatic.", advanced=True),
         Field("drop_last", "Drop last N points", "int", 1, 0, 100, 1, 0, advanced=True),
     )
@@ -358,6 +362,8 @@ class StaircaseAnalyzer(Analyzer):
         t, y = curve.x[:n], curve.y[:n]
         steps, ignored = detect_step_events(t, y, k=params["k"], min_sep=params["min_sep"], expected=int(params["expected"]),
                                             abruptness=self._abruptness(curve, params["sharp"]))
+        if params["opposite"] == "recovery" and len(ignored):           # the jumps the other way are the sensor recovering
+            steps, ignored = np.sort(np.concatenate([steps, ignored])), np.array([])
         s = CAAnalysisSettings(drop_last=0, step_times=[float(v) for v in steps], ignored_events=[float(v) for v in ignored],
                                settle=params["settle"], window=params["window"])
         r = analyze_ca(t, y, s)
@@ -368,7 +374,7 @@ class StaircaseAnalyzer(Analyzer):
             return out
         out.ok = True
         u = curve.y_unit
-        rt_rows, t90 = [], []
+        rt_rows, t90, t95 = [], [], []
         bounds = [float(t[0])] + list(map(float, steps)) + [float(t[-1])]
         for k in range(1, len(bounds) - 1):
             seg_end = bounds[k + 1]
@@ -382,11 +388,19 @@ class StaircaseAnalyzer(Analyzer):
             rt = transients.response_time(t, y, onset, pre=min(5.0, max(onset - bounds[k - 1], 0.2)),
                                           post_window=min(params["window"], seg_end - bounds[k]), t_end=seg_end - 0.3)
             t90.append(rt.t_high)
+            t95.append(rt.t_95)
             rt_rows.append(rt)
-        header = ["Segment", "t step (s)", f"Plateau ({u})", f"± sd ({u})", f"Δ vs baseline ({u})", "t90 (s)"]
-        rows = [["0 (baseline)", "—", g(r.plateau[0]), g(r.plateau_sd[0]), "0", "—"]]
+        # With "Recovery steps" chosen, a step that moves the signal the opposite way to the first one is the sensor *recovering* (analyte
+        # removed), not responding.  Otherwise every step is an addition by definition: a later segment that ends lower only reflects
+        # a jump the other way that was left out, and calling it a recovery would time something that is not one.
+        changes = [float(r.plateau[k] - r.plateau[k - 1]) for k in range(1, len(r.plateau))]
+        first = next((c for c in changes if c != 0), 0.0)
+        recovering = [params["opposite"] == "recovery" and c * first < 0 for c in changes]
+        header = ["Segment", "t step (s)", f"Plateau ({u})", f"± sd ({u})", f"Δ vs baseline ({u})", "t90 (s)", "t95 (s)"]
+        rows = [["0 (baseline)", "—", g(r.plateau[0]), g(r.plateau_sd[0]), "0", "—", "—"]]
         for k in range(1, len(r.plateau)):
-            rows.append([str(k), f"{steps[k - 1]:.1f}", g(r.plateau[k]), g(r.plateau_sd[k]), g(r.delta[k]), g(t90[k - 1], 3)])
+            rows.append([f"{k} (recovery)" if recovering[k - 1] else str(k), f"{steps[k - 1]:.1f}", g(r.plateau[k]), g(r.plateau_sd[k]),
+                         g(r.delta[k]), g(t90[k - 1], 3), g(t95[k - 1], 3)])
         out.table = (header, rows)
         out.metrics = [Metric("Steps", str(len(steps)), ""), Metric("Total change", g(r.delta[-1]), u),
                        Metric("Median t90", g(float(np.nanmedian(t90)) if np.isfinite(t90).any() else NAN, 3), "s"),
@@ -395,8 +409,11 @@ class StaircaseAnalyzer(Analyzer):
         out.responses = [ResponseSpec("Plateau", u, float(r.plateau[k]), float(r.plateau_sd[k]), suffix=("baseline" if k == 0 else f"step {k}"))
                          for k in range(len(r.plateau))]
         out.responses += [ResponseSpec("Step change (Δ)", u, float(r.delta[k]), suffix=f"step {k}") for k in range(1, len(r.plateau))]
-        out.responses += [ResponseSpec("t90", "s", float(t90[k - 1]), suffix=f"step {k}") for k in range(1, len(r.plateau))
-                          if math.isfinite(t90[k - 1])]
+        for k in range(1, len(r.plateau)):                  # recovery steps are separate quantities: they are not the sensor's response time
+            kind = "Recovery " if recovering[k - 1] else ""
+            for name, values in (("t90", t90), ("t95", t95)):
+                if math.isfinite(values[k - 1]):
+                    out.responses.append(ResponseSpec(kind + name, "s", float(values[k - 1]), suffix=f"step {k}"))
         return out
 
     def draw(self, fig, curve, params, result, p) -> None:

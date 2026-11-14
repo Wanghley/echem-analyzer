@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from typing import Optional
 
 import numpy as np
+from scipy.ndimage import median_filter
 
 from .calibration import fit_linear
 
@@ -52,6 +53,7 @@ class ResponseTime:
     t_low: float = NAN                  # time after the step to reach `low` of the change
     t_high: float = NAN
     rise: float = NAN                   # t_high - t_low (e.g. 10-90 % rise time)
+    t_95: float = NAN                   # time to reach 95 % of the change: the settling time of a slow or noisy sensor
     low: float = 0.1
     high: float = 0.9
     warnings: list[str] = field(default_factory=list)
@@ -63,6 +65,11 @@ def response_time(t, y, t_step: float, pre: float = 5.0, post_window: float = 10
 
     The start level is the mean over ``pre`` seconds before ``t_step``; the end level is the mean over the last
     ``post_window`` seconds before ``t_end`` (default: the end of the trace).  Times are measured from ``t_step``.
+
+    The change is a *fraction* of the way from the first level to the last, so it works for a fall as well as a rise: the time
+    to return to baseline after an analyte is removed (the **recovery time**) is the same measurement on the falling step.
+    A level counts as reached at the first crossing of a 3-point running median of the response, so one noisy sample cannot be
+    mistaken for the response arriving; the 95 % level, close to the plateau, is where that matters most.
     """
     t = np.asarray(t, float)
     y = np.asarray(y, float)
@@ -81,6 +88,7 @@ def response_time(t, y, t_step: float, pre: float = 5.0, post_window: float = 10
     after = (t >= t_step) & (t <= t_end)
     ta, ya = t[after], y[after]
     frac = (ya - y0) / (y1 - y0)
+    frac = median_filter(frac, size=3, mode="nearest") if frac.size >= 3 else frac
 
     def first_cross(level: float) -> float:
         idx = np.flatnonzero(frac >= level)
@@ -91,7 +99,7 @@ def response_time(t, y, t_step: float, pre: float = 5.0, post_window: float = 10
             return float(ta[0] - t_step)
         return float(ta[j - 1] + (level - frac[j - 1]) * (ta[j] - ta[j - 1]) / (frac[j] - frac[j - 1]) - t_step)
 
-    out.t_low, out.t_high = first_cross(low), first_cross(high)
+    out.t_low, out.t_high, out.t_95 = first_cross(low), first_cross(high), first_cross(0.95)
     out.rise = out.t_high - out.t_low if math.isfinite(out.t_low) and math.isfinite(out.t_high) else NAN
     if not math.isfinite(out.t_high):
         out.warnings.append("The response never reached the high level.")
