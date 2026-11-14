@@ -19,6 +19,19 @@ wrote as one long trace is cut into scans at the reversal points of the potentia
 |dE/dt| of its time and potential columns is used and the curve is marked as estimated. The four readers marked *preview* were written from the
 manufacturers' file descriptions and tested on synthetic files only.
 
+## Bench calculators
+
+`echem_analyzer/bench.py`; each is checked against a value worked out by hand.
+
+* **Standard-addition plan.** The app's model is C = c<sub>s</sub>·ΣV/(V₀+ΣV). Inverting it, the cumulative stock volume for a target is
+  ΣV = C·V₀/(c<sub>s</sub> − C), and each addition is the difference of successive totals. The additions stay under a fraction *p* of the cell
+  when c<sub>s</sub> ≥ C<sub>max</sub>(1+p)/p (21 × the top target for 5 %).
+* **Expected peak current.** Randles–Sevcik, reversible: i<sub>p</sub> = 0.4463·nFAC·√(nFνD/RT); totally irreversible: 0.4958·nFAC·√(αn<sub>a</sub>FνD/RT).
+  The range is the smallest decade (1 nA … 100 mA) that holds 1.5 × the expected peak.
+* **Nernst slope.** 2.303·RT/(|z|F), 59.16 mV/decade at 25 °C for z = ±1; it is proportional to T, so it moves by about 0.2 mV/decade per kelvin.
+* **Ionic strength and Debye length.** I = ½ Σ c<sub>i</sub>z<sub>i</sub>²; λ<sub>D</sub> = √(ε<sub>0</sub>ε<sub>r</sub>k<sub>B</sub>T / (2N<sub>A</sub>e²I)) with ε<sub>r</sub>
+  of water from the Malmberg–Maryott fit (78.3 at 25 °C): 0.96 nm at 0.1 M, 9.6 nm at 1 mM.
+
 ## Import checks
 
 Every curve is checked when it is loaded (`echem_analyzer/dataqc.py`), and findings appear in the Measurements table and the report. They are

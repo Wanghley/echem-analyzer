@@ -17,6 +17,12 @@ no reader recognises opens the import dialog when you drop it on the window. CV 
 into scans at their reversal points; when a file does not state the scan rate, one is estimated from the time and potential
 columns and marked as estimated.
 
+**Bench calculators** (*Tools ▸ Bench calculators…*, `Ctrl/⌘ + Shift + B`): dilutions (C₁V₁ = C₂V₂ with any one unknown), a serial dilution,
+the stock volumes of a standard-addition series (the exact inverse of the analysis's own model, with warnings for volumes below a pipette's
+range and for a diluted matrix, and rounding to your pipette), the peak current to expect from a redox couple with the instrument range to set
+for it, the Nernst slope and its temperature dependence, ionic strength with the Debye length, and the mass to weigh out. Pages recompute as
+you type and say what is missing instead of showing a wrong number.
+
 **Import checks.** Each curve is looked over when it is loaded. The **Checks** column of *Measurements* says *OK* or how many errors
 and warnings it has (hover for the details; select the curve to read them beside the preview), and the report's Overview lists them.
 They flag points that are not numbers, time that runs backwards, a current stuck at the instrument's limit, isolated spikes, a flat line,

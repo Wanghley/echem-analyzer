@@ -10,6 +10,9 @@ uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`, tagged `vM
   CV (one curve per cycle), LSV, DPV, SWV, chronoamperometry, open-circuit potential and impedance, in the app's units. A file is
   recognised by what it contains, so a `.txt` from one instrument is not mistaken for another's. **These four readers are preview:** they
   were written from the manufacturers' file descriptions and tested on synthetic files only.
+- **Bench calculators** (*Tools ▸ Bench calculators…*, `Ctrl/⌘ + Shift + B`): dilution, serial dilution, standard-addition pipette volumes (the exact
+  inverse of the analysis's model, with warnings for volumes below a pipette's range and for a diluted matrix), the Randles–Sevcik peak current
+  with the instrument current range to set, the Nernst slope with its temperature dependence, ionic strength with the Debye length, and weighing.
 - **Import checks.** Every curve is looked over when it is loaded: points that are not numbers, time that runs backwards, a current stuck at the
   instrument's limit, isolated spikes (including PalmSens' wrong last point), a flat line, an open-circuit potential that has not settled, units that
   cannot be right, impossible impedance frequencies, and the same run loaded twice. A **Checks** column in *Measurements* shows the result (hover or
