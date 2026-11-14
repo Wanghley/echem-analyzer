@@ -19,6 +19,22 @@ wrote as one long trace is cut into scans at the reversal points of the potentia
 |dE/dt| of its time and potential columns is used and the curve is marked as estimated. The four readers marked *preview* were written from the
 manufacturers' file descriptions and tested on synthetic files only.
 
+## Acceptance, yield and variants
+
+* **Rules** (`acceptance.py`) bound a quantity per electrode: pass if min ≤ value ≤ max (inclusive); the value is the mean of the electrode's usable
+  measurements, or tested for each (the worst one is shown), or the latest by time. An electrode fails if any rule fails, is incomplete if none failed but
+  one is unmeasured, and passes otherwise.
+* **Yield** = passed / (passed + failed) among judged electrodes, with the 95 % Wilson score interval
+  p̃ ± z√(p(1−p)/n + z²/4n²) / (1 + z²/n), p̃ = (p + z²/2n)/(1 + z²/n); for 8 of 10 it is 49–94 %.
+* **Variant comparison** (`variants.py`). Each electrode's sensitivity is the slope of its own straight-line calibration. A variant's mean is the mean of
+  those slopes, its interval x̄ ± t<sub>0.975,n−1</sub>·s/√n (empty for one electrode), its RSD s/x̄. The pooled sensitivity, detection limit and linear range
+  come from all the variant's standards in one calibration; reproducibility is the mean RSD between electrodes over the concentration levels; retention is the
+  stability study's final retention; response time the median t90.
+* **Fabrication trend.** A least-squares line of a per-electrode metric on a numeric parameter (`scipy.stats.linregress`), with r and the two-sided p-value;
+  not computed for fewer than three electrodes or a parameter that does not vary.
+* **Datasheet** (`datasheet.py`): the variant's fabrication parameters (mean ± SD of numbers), its figures of merit and its pooled calibration on one page, with
+  the detection-limit factor k stated; one page also on US Letter.
+
 ## Response time, recovery, drift and temperature
 
 * **t90 and t95.** The start level is the mean over the 5 s before the step onset; the end level the mean of the last window of the segment. A level

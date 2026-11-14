@@ -44,6 +44,9 @@
 - **From curve to figure of merit.** Standard addition with a 95 % interval on C<sub>x</sub>, calibration with model comparison (linear, Nernstian, Michaelis–Menten, Hill), LOD/LOQ from the residual, the baseline noise or blank replicates, and a linear-range finder.
 - **Whole sensor studies.** Reproducibility between electrodes, stability over time, selectivity and spike recovery, from one Responses table.
 - **Reports you can hand over.** A **PDF** or an **Excel workbook** (with native, editable charts) built from the analysis you see on screen, and one-file **`.echemproj` projects** that hold the raw curves, every setting and the plots.
+- **From prototype to datasheet.** Record each electrode's variant, lot and fabrication parameters, screen electrodes against acceptance rules (ΔEp, peak-current ratio, anything the study holds) with the yield of each batch, compare variants with intervals that reflect the spread between electrodes, see which fabrication parameter drives performance, and export a one-page datasheet per variant.
+- **Sensor-specific analysis.** Ion-selective electrodes (Nernstian region, IUPAC detection limit, slope against theory), label-free and signal-off sensors (change from each electrode's own blank), and wearable sensing (t90 / t95, recovery, baseline drift, temperature coefficient). Calibration diagnostics flag the standards that distort a fit and give every unknown a 95 % interval.
+- **At the bench and in scripts.** Bench calculators (dilutions, standard-addition volumes, expected peak current and current range, Nernst slope, ionic strength), import-time data checks, a window-free command line (`report`, `workbook`, `datasheet`, `package`, `qc`, `convert`) and a self-describing data package.
 - **Methods you can check.** A searchable in-app guide (`F1`) shows the formulas behind every number; warnings point at what looks wrong instead of hiding it.
 - **Pleasant to use.** Light and dark themes, publication-style and colour-blind-safe plots, resizable panels that remember their size, presets, and drag-and-drop.
 - **Keeps itself up to date.** Checks for a new release, verifies the download and installs it, asking about unsaved work first.
@@ -133,6 +136,8 @@ uv run python -m echem_analyzer            # or: ./run.command, then drag files 
 ```
 
 Then drop instrument files (`.csv`, `.pssession`, `.dta`, `.txt`, `.mpt`) onto the window (or a `.echemproj` project) and follow the topic tiles on the start page. `python -m echem_analyzer --version` prints the version; `--selftest` analyses a synthetic calibration, writes a PDF, a workbook and a project and draws every tab without a display.
+
+The same program runs from a script: `python -m echem_analyzer report project.echemproj`, `... datasheet project.echemproj -q "Peak height"`, `... package project.echemproj`, `... qc data/ --strict`, `... convert run.dta -o run.csv` (see `--help`; exit code 1 means `qc` found problems).
 
 ## 📚 Documentation
 

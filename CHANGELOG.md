@@ -10,6 +10,14 @@ uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`, tagged `vM
   CV (one curve per cycle), LSV, DPV, SWV, chronoamperometry, open-circuit potential and impedance, in the app's units. A file is
   recognised by what it contains, so a `.txt` from one instrument is not mistaken for another's. **These four readers are preview:** they
   were written from the manufacturers' file descriptions and tested on synthetic files only.
+- **Prototype tracking.** A **Devices** tab records each electrode's variant, lot, date and fabrication parameters (CSV in and out); acceptance rules (with a
+  ferri/ferrocyanide template and named sets) give each electrode pass, fail or not measured and each variant or lot a yield with its 95 % Wilson interval. A
+  **Redox couple** analysis of a CV sends ΔEp, the peak-current ratio, E½ and both peak currents to the study. A **Variants** tab compares variants (mean
+  sensitivity with an interval from the spread between electrodes, pooled detection limit and range, reproducibility, retention, response time, yield) and plots
+  a fabrication parameter against sensitivity or detection limit; **Export datasheet** writes one page per variant.
+- **Command line and data package.** `report`, `workbook`, `datasheet`, `package`, `qc` and `convert` run without a window (exit code 1 when `qc` finds
+  problems); *File ▸ Export data package…* writes a zip with the original files and checksums, every curve as CSV, the responses, devices, rules, settings and a
+  README, readable without this program.
 - **Wearable sensing.** Step responses report **t95** next to t90 (a level counts as reached on a 3-point running median, so one noisy sample is not
   mistaken for the response arriving); a *Steps against the first* setting treats jumps the other way as the sensor **recovering**, with their own
   times; a *Baseline drift* setting removes a straight-line drift fitted to the baseline. Responses can carry a **temperature** (T (°C) column), and a

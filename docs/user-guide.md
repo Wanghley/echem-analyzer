@@ -17,6 +17,16 @@ no reader recognises opens the import dialog when you drop it on the window. CV 
 into scans at their reversal points; when a file does not state the scan rate, one is estimated from the time and potential
 columns and marked as estimated.
 
+**Prototypes.** The Study tab's **Devices** tab records each electrode's variant, lot, date and fabrication parameters (import or export CSV), holds
+acceptance rules (for example ΔEp ≤ 80 mV and a peak-current ratio of 0.9–1.1 from a ferri/ferrocyanide CV, using the **Redox couple** analysis) and shows
+pass or fail per electrode and the yield of each variant or lot with its 95 % interval. The **Variants** tab compares variants (mean sensitivity with an
+interval from the spread between electrodes, detection limit, reproducibility, retention, response time, yield), plots a fabrication parameter against
+sensitivity, and exports a **one-page datasheet** per variant.
+
+**Command line and data package.** `echem-analyzer report|workbook|datasheet|package PROJECT`, `echem-analyzer qc FILE_OR_FOLDER …` (exit code 1 on
+problems) and `echem-analyzer convert FILE` run without a window. *File ▸ Export data package…* writes a zip with the original files and checksums, every
+curve as CSV, the responses, devices, rules and settings, and a README, readable without this program.
+
 **Wearable sensing.** The step-response analysis gives t90 and t95, can treat steps against the first one as *recoveries* (their own times), and can
 remove a straight-line baseline drift. Fill the **T (°C)** column of the Responses table for standards measured at several temperatures and the
 **Temperature** tab (the last Study tab) gives the temperature coefficient in % per °C with its uncertainty, the response at a reference temperature, and

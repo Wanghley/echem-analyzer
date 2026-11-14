@@ -322,6 +322,49 @@ is what it would have read at the reference temperature; the RSD before and afte
 percentage coefficient only makes sense at one. It warns about pooled concentrations or electrodes, only two temperatures (a line always fits two points),
 a narrow range, a reference outside the range, and a coefficient not clearly different from zero.</p>
 """),
+    Topic("prototypes", "Sensor study", "Prototypes: devices, acceptance, variants", """
+<h2>Prototypes: devices, acceptance and variants</h2>
+<p>To design a sensor you build several electrodes of each version and ask which version is better, how many of them are good, and which step of the
+fabrication matters. Three Study tabs do this; they use the electrode names you already give in the <i>Group</i> column of the Responses table.</p>
+<h3>Devices</h3>
+<p>One row per electrode: its <b>variant</b> (a design or recipe), <b>lot</b> (a fabrication batch), date, notes, and any <b>fabrication parameters</b> you add
+by name (ink volume, deposition time, annealing temperature…). A number typed in a parameter is kept as a number, so it can be plotted. <i>Import CSV…</i>
+and <i>Export CSV…</i> exchange the table with a lab notebook (any delimiter and column order; a column called <code>id</code> names the electrode).</p>
+<h3>Acceptance rules and yield</h3>
+<p>A rule bounds a measured quantity: <i>ΔEp ≤ 80 mV</i>, <i>peak-current ratio between 0.9 and 1.1</i>. A device passes when every rule holds, fails (and
+says which rule and what it measured) or is <i>not measured</i>. <i>Judged by</i> chooses what is tested when a device has several measurements: the mean,
+every one, or the latest. The <b>yield</b> of each variant or lot is passed ÷ (passed + failed), with a 95 % Wilson interval, because “8 of 10” is not as
+certain as “80 of 100”; devices that could not be judged are not counted either way. Load the ferri/ferrocyanide template as a start, and save your own
+sets to reuse in any project. To get ΔEp and the peak ratio into the study, run <b>Redox couple</b> on a CV scan of each electrode in the Analysis tab and
+press <i>Add to study</i>.</p>
+<h3>Variants</h3>
+<p>Each electrode is calibrated on its own, so a variant is described by how its electrodes <i>differ</i>: the mean sensitivity with a 95 % interval from the
+spread between electrodes, next to the pooled detection limit and linear range, the reproducibility, retention, median response time and yield.
+Choose a fabrication parameter to plot against sensitivity (or detection limit) with a line, its correlation and p-value: that is how you see which
+step drives performance. With only three or four electrodes the p-value will be large; it is shown so you can see how little they can say.
+<i>Export datasheet (PDF)…</i> writes one page per variant.</p>
+"""),
+    Topic("automation", "Projects and output", "Command line and data package", """
+<h2>Command line and data package</h2>
+<p>Everything that writes a file can run without a window, from a script or a batch job:</p>
+""" + _table([
+        ("<code>echem-analyzer report PROJECT</code>", "PDF report of a project (<code>-o</code> to name it)"),
+        ("<code>echem-analyzer workbook PROJECT</code>", "Excel workbook"),
+        ("<code>echem-analyzer datasheet PROJECT -q Quantity -v Variant</code>", "one-page datasheet per variant"),
+        ("<code>echem-analyzer package PROJECT</code>", "data package (<code>--no-raw</code> leaves the instrument files out)"),
+        ("<code>echem-analyzer qc FILE_OR_FOLDER …</code>", "check instrument files; <code>--strict</code> counts warnings, <code>--json</code> prints JSON"),
+        ("<code>echem-analyzer convert FILE</code>", "any supported file as a tidy CSV in the app's units (<code>-o -</code> for standard output)"),
+    ], ("Command", "What it does")) + """
+<p>Exit codes: <b>0</b> done (or no problems found), <b>1</b> <code>qc</code> found problems, <b>2</b> an input could not be used, with the reason on standard
+error. Commands that draw a PDF start Qt without a display. The Windows build is a windowed program and prints nothing to a console; use a source or pip
+install there.</p>
+<h3>The data package</h3>
+<p><i>File ▸ Export data package…</i> (or <code>package</code>) writes a zip another person can read without this program: the <b>original instrument files</b>
+with SHA-256 checksums, every curve as a CSV with the unit of each column in its header and the exact numbers, the study's responses, the devices and
+acceptance rules, the analysis settings (so the analysis can be repeated), a readable results snapshot, a machine-readable <code>metadata.json</code>, and a
+<code>README.md</code> that says what is where, in which units and how the numbers were obtained. An original file that has since moved is noted, and its
+curves are still included.</p>
+"""),
     Topic("repro", "Sensor study", "Reproducibility and stability", """
 <h2>Reproducibility, stability, selectivity and recovery</h2>
 <ul>
