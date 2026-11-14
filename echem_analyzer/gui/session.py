@@ -6,7 +6,7 @@ from typing import Iterable, Optional
 
 from PySide6.QtCore import QObject, QSettings, Signal
 
-from .. import __version__, io_palmsens, readers
+from .. import __version__, dataqc, io_palmsens, readers
 from ..ca_analysis import detect_step_events, sync_step_lists
 from ..cv_analysis import CVRun, group_cv_runs
 from ..analyzers import ANALYZERS, ResponseSpec, upsert_responses
@@ -47,6 +47,8 @@ class Session(QObject):
         self.responses: list[Response] = []
         self.extras: dict = {}               # analysis_params, study / electrode settings (JSON-able)
         self._curves: dict[str, Curve] = {}
+        self._flags: dict[str, list[dataqc.Flag]] = {}
+        self._flags_key: tuple = ()
         self.project_path: Optional[Path] = None
         self.meta = ProjectMeta(operator=prefs.get("operator"))
         self.dirty = False
@@ -82,6 +84,13 @@ class Session(QObject):
             self._set_dirty(True)
             self.files_changed.emit()
         return loaded, errors
+
+    def data_flags(self) -> dict[str, list[dataqc.Flag]]:
+        """What the import checks found, by curve uid.  Recomputed only when the curves, their technique or their length change."""
+        key = tuple((c.uid, c.kind, c.n) for f in self.files for c in f.curves)
+        if key != self._flags_key:
+            self._flags, self._flags_key = dataqc.check_files(self.files), key
+        return self._flags
 
     def _reindex(self) -> None:
         self._curves = {c.uid: c for f in self.files for c in f.curves}
