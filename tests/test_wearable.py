@@ -269,7 +269,7 @@ def test_the_temperature_panel_shows_the_coefficient_and_remembers_its_settings(
     from helpers import make_window
     win = make_window(tmp_path / "w")
     st = win.study_tab
-    assert st.tabs.tabText(st.tabs.count() - 1) == "Temperature"                        # last: saved tab indices keep their meaning
+    assert [st.tabs.tabText(i) for i in range(st.tabs.count() - 3, st.tabs.count())] == ["Temperature", "Devices", "Variants"]    # appended: saved tab indices keep their meaning
     win.session.responses[:] = temp_responses([15, 20, 25, 30, 35], alpha=2.0, reps=2, noise=0.4)
     win.session.responses_changed.emit()
     panel = st.temperature
