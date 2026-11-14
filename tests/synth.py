@@ -119,3 +119,10 @@ def write_biologic_mpt(path: Path, technique: str, columns: list[str], rows, set
     num = lambda v: (f"{v:.6e}" if isinstance(v, float) else str(v)).replace(".", decimal)                  # noqa: E731
     lines = head + ["\t".join(columns)] + ["\t".join(num(v) for v in r) for r in rows]
     path.write_bytes(("\r\n".join(lines) + "\r\n").encode("latin-1"))
+
+
+def write_autolab_txt(path: Path, columns: list[str], rows, delimiter: str = ";", decimal: str = ",") -> None:
+    """A Nova data export: one line of column names, then the rows (delimiter and decimal mark follow the locale)."""
+    num = lambda v: (f"{v:.6e}" if isinstance(v, float) else str(v)).replace(".", decimal)                  # noqa: E731
+    lines = [delimiter.join(columns)] + [delimiter.join(num(v) for v in r) for r in rows]
+    path.write_bytes(("\r\n".join(lines) + "\r\n").encode("utf-8"))

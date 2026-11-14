@@ -309,3 +309,70 @@ def test_biologic_tolerates_decimal_commas_and_a_miscounted_header(tmp_path):
 def test_an_mpt_without_the_ec_lab_line_is_not_claimed(tmp_path):
     (tmp_path / "x.mpt").write_text("time/s\tEwe/V\n0\t1\n", encoding="utf-8")
     assert readers.pick(tmp_path / "x.mpt") is None
+
+
+# ===================================================================== Autolab Nova export
+
+NOVA_CV_COLS = ["Potential applied (V)", "Time (s)", "WE(1).Current (A)", "WE(1).Potential (V)", "Scan", "Index"]
+
+
+def _nova_cv_rows(cycles=2, rate=0.1):
+    e1, i1 = synth.cv_scan(1.0, 3.0)
+    rows = []
+    for cyc in range(cycles):
+        for k in range(e1.size):
+            n = cyc * e1.size + k
+            rows.append((float(e1[k]), n * 0.005 / rate, float(i1[k] * 1e-6), float(e1[k]) - 1e-4, cyc + 1, n))
+    return rows, e1, i1
+
+
+@pytest.mark.parametrize("delimiter,decimal", [(";", ","), ("\t", "."), (",", ".")])
+def test_nova_cv_scans_come_from_the_scan_column_whatever_the_locale(tmp_path, delimiter, decimal):
+    rows, e, i_ua = _nova_cv_rows()
+    synth.write_autolab_txt(tmp_path / "cv.txt", NOVA_CV_COLS, rows, delimiter, decimal)
+    assert readers.pick(tmp_path / "cv.txt").key == "autolab"
+    f = readers.load(tmp_path / "cv.txt")
+    assert f.fmt == "autolab" and [c.scan for c in f.curves] == [1, 2] and {c.kind for c in f.curves} == {"CV"}
+    c = f.curves[0]
+    assert np.allclose(c.x, e) and np.allclose(c.y, i_ua, rtol=1e-5, atol=1e-6) and (c.x_unit, c.y_unit) == ("V", "µA")
+    assert c.meta["scan_rate"] == pytest.approx(0.1, rel=0.02)                      # Nova does not state it: estimated
+
+
+def test_nova_without_a_scan_column_a_back_and_forth_sweep_is_a_cv_and_a_one_way_sweep_is_an_lsv(tmp_path):
+    rows, e, i_ua = _nova_cv_rows(cycles=1)
+    synth.write_autolab_txt(tmp_path / "cv.csv", NOVA_CV_COLS[:4], [r[:4] for r in rows])
+    assert {c.kind for c in readers.load(tmp_path / "cv.csv").curves} == {"CV"}                 # also claimed as a .csv
+    half = [r[:4] for r in rows[:e.size // 2]]
+    synth.write_autolab_txt(tmp_path / "lsv.txt", NOVA_CV_COLS[:4], half)
+    lsv = readers.load(tmp_path / "lsv.txt").curves[0]
+    assert lsv.kind == "LSV" and lsv.scan is None
+
+
+def test_nova_amperometry_and_open_circuit(tmp_path):
+    t = np.linspace(0, 30, 61)
+    synth.write_autolab_txt(tmp_path / "ca.txt", ["Time (s)", "WE(1).Current (A)", "WE(1).Potential (V)"],
+                            [(float(t[k]), float((2 + (t[k] > 15)) * 1e-6), 0.3) for k in range(t.size)])
+    ca = readers.load(tmp_path / "ca.txt").curves[0]
+    assert ca.kind == "CA" and ca.y[0] == pytest.approx(2.0) and ca.meta["E"] == pytest.approx(0.3)
+    synth.write_autolab_txt(tmp_path / "ocp.txt", ["Time (s)", "WE(1).Potential (V)"], [(float(x), 0.15 + 1e-3 * np.exp(-x / 6)) for x in t])
+    assert readers.load(tmp_path / "ocp.txt").curves[0].kind == "OCP"
+
+
+def test_nova_impedance(tmp_path):
+    f_hz, z = synth.randles_spectrum()
+    synth.write_autolab_txt(tmp_path / "eis.txt", ["Index", "Frequency (Hz)", "Z' (Ω)", "-Z'' (Ω)", "Z (Ω)", "-Phase (°)", "Time (s)"],
+                            [(k, float(f), float(zz.real), float(-zz.imag), float(abs(zz)), 0.0, float(k)) for k, (f, zz) in enumerate(zip(f_hz, z))])
+    c = readers.load(tmp_path / "eis.txt").curves[0]
+    assert c.kind == "EIS" and np.allclose(c.extra["freq"], f_hz, rtol=1e-5) and (c.extra["zim"] < 0).all()
+
+
+def test_text_and_csv_files_go_to_the_reader_that_wrote_them(tmp_path):
+    e, i = synth.cv_scan(1.0, 3.0)
+    synth.write_chi_txt(tmp_path / "chi.txt", "Cyclic Voltammetry", ["Potential/V", "Current/A"], list(zip(e, i * 1e-6)))
+    rows, _, _ = _nova_cv_rows(cycles=1)
+    synth.write_autolab_txt(tmp_path / "nova.txt", NOVA_CV_COLS, rows)
+    _palmsens = tmp_path / "ps.csv"
+    synth.write_pstrace_csv(_palmsens, [("CA: i vs t", np.arange(5.0), np.ones(5), "s", "µA")])
+    (tmp_path / "notes.txt").write_text("Potential applied (V) is what I meant to record\n", encoding="utf-8")
+    assert [readers.pick(tmp_path / n).key for n in ("chi.txt", "nova.txt", "ps.csv")] == ["chi", "autolab", "csv"]
+    assert readers.pick(tmp_path / "notes.txt") is None                                  # a header with no rows is not a file
