@@ -19,6 +19,27 @@ wrote as one long trace is cut into scans at the reversal points of the potentia
 |dE/dt| of its time and potential columns is used and the curve is marked as estimated. The four readers marked *preview* were written from the
 manufacturers' file descriptions and tested on synthetic files only.
 
+## Ion-selective electrodes
+
+`echem_analyzer/potentiometry.py`; switched on by *Ion-selective electrode* in the Calibration panel.
+
+* **Theory.** E = E° + (2.303·RT/zF)·log₁₀ a; the slope is 59.16/z mV/decade at 25 °C and proportional to T. Activity a = γc with the Davies
+  equation, log₁₀γ = −A z² (√I/(1+√I) − 0.3 I), A = 1.8248·10⁶ (ε<sub>r</sub>T)<sup>−3/2</sup> (≈ 0.51 at 25 °C).
+* **Nernstian region.** With five or more concentration levels the curve is fitted as two straight lines in log₁₀ c, the split chosen by least squares;
+  it is kept when AIC prefers it by more than 4 beyond the extra parameters, the calibration is not already straight (R² < 0.99999) and one line has
+  less than half the other's slope. The steeper line is the Nernstian one. If the flat line is at low concentration it gives a detection limit; if at
+  high concentration the response saturates and the region ends there.
+* **Corner trimming.** The transition is a smooth corner, and its points bend both lines toward each other. Each level next to the corner is dropped while
+  it lies farther than max(1 mV, 3σ) from the line through the others, with the line a Theil–Sen slope and a median-of-offsets intercept and σ from the
+  median absolute deviation, so that one wrong standard cannot widen the tolerance. At least three levels stay in the Nernstian line and two in the flat one.
+* **Detection limit (IUPAC).** The concentration at which the extrapolated flat part and the extrapolated Nernstian line cross. Not reported when they
+  do not cross inside the range measured.
+* **Standard potential.** E° at a = 1 M is intercept − slope·log₁₀(γ·f), with f the factor from the concentration unit to M.
+* **Selectivity.** Nikolsky–Eisenman, E = E° + S log₁₀(aᵢ + Kᵖᵒᵗ aⱼ<sup>zᵢ/zⱼ</sup>). Separate solutions: log K = (E<sub>j</sub> − E<sub>i</sub>) zᵢF/(2.303RT) +
+  log aᵢ − (zᵢ/zⱼ) log aⱼ. Fixed interference: log K = log a(crossing) − (zᵢ/zⱼ) log aⱼ.
+* **Accuracy** on data generated from the Nikolsky–Eisenman equation (0.3 mV noise, 30 seeds): slope within 1 % of the true 59.16 and the detection limit
+  within 25 % of the true value (the corner biases it slightly high).
+
 ## Calibration diagnostics and intervals
 
 For linear and log-linear calibrations (`calibration.diagnostics`, `calibration.prediction_interval`):

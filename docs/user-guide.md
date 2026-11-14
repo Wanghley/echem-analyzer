@@ -17,6 +17,13 @@ no reader recognises opens the import dialog when you drop it on the window. CV 
 into scans at their reversal points; when a file does not state the scan rate, one is estimated from the time and potential
 columns and marked as estimated.
 
+**Ion-selective electrodes.** Tick *Ion-selective electrode (potentiometric)* in the Calibration panel and give the ion's charge, the temperature and
+(optionally) the background ionic strength. The app finds the Nernstian region, reports the slope as a percentage of the theoretical one, the IUPAC
+detection limit, the region's limits and E°, and describes each unknown as below the limit, in the curved foot, inside the region or above it.
+
+**Response as the change from the blank.** For label-free and signal-off sensors, whose electrodes each start from a different baseline, choose
+*Response as ▸ Change from the blank* (or *Percent change*) in the Calibration panel; measure a blank (role *blank*) on each electrode.
+
 **Calibration checks.** Every sample read from a calibration gets a 95 % interval as well as ± SE. For straight-line calibrations the study also
 tests each standard: ones that sit far from the line, or that move it a lot, are ringed on the plot, named in the warnings and listed under
 *Standards to check*. Nothing is removed for you.

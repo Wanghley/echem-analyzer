@@ -10,6 +10,12 @@ uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`, tagged `vM
   CV (one curve per cycle), LSV, DPV, SWV, chronoamperometry, open-circuit potential and impedance, in the app's units. A file is
   recognised by what it contains, so a `.txt` from one instrument is not mistaken for another's. **These four readers are preview:** they
   were written from the manufacturers' file descriptions and tested on synthetic files only.
+- **Ion-selective electrodes.** *Ion-selective electrode (potentiometric)* in the Calibration panel finds the Nernstian region (leaving out the curved
+  corner), reports the slope as a percentage of 2.303·RT/zF for the ion's charge and temperature, the IUPAC detection limit, the region's limits and E°
+  (with Davies activity coefficients when a background ionic strength is given), and describes each unknown as below the limit, in the curved foot or above
+  the region. Selectivity coefficients (separate-solution and fixed-interference) are available to scripts.
+- **Response as the change from the blank.** A new *Response as* setting turns every response into the (percent) change from the mean blank of the same
+  electrode, for label-free and signal-off sensors whose electrodes start from different baselines.
 - **Calibration checks.** Samples read from a calibration get a 95 % confidence interval (exact for a straight line: the calibration line's crossing of the
   prediction band), and linear and log-linear calibrations test every standard for leverage, studentized residual and Cook's distance. Standards that sit
   far from the line or move it a lot are ringed on the plot, named in the warnings and listed in *Standards to check*; nothing is removed for you.

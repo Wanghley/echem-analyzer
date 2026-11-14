@@ -233,9 +233,28 @@ a blocking layer binds). <b>CPE</b> parameters Q and n (n = 1 is an ideal capaci
 Drift above 1 % per minute is flagged: the level may not be settled.</li>
 <li><b>Step response (staircase):</b> the level after each step and the <b>response time t<sub>90</sub></b> (10→90 %, measured from the step
 onset). For slow potentiometric responses set <i>Step shape</i> to <i>Allow slow responses</i>; the automatic choice expects abrupt steps for CA.</li>
-<li><b>Nernstian response:</b> E vs log C should have a slope of 59.16/z mV per decade at 25 °C. Use the <i>log-linear</i> calibration model
-and compare the slope with that value.</li>
+<li><b>Nernstian response:</b> E vs log C should have a slope of 59.16/z mV per decade at 25 °C. For an ion-selective electrode switch on
+<b>Ion-selective electrode (potentiometric)</b> in the Calibration panel (below).</li>
 </ul>
+<h3>Calibrating an ion-selective electrode</h3>
+<p>Send the steady-state potential of each standard to the study, give the standards their concentrations, then tick <i>Ion-selective electrode</i> and
+set the ion's <b>charge</b> (signed: +1 for Na⁺, −1 for Cl⁻), the <b>temperature</b> and, if the standards sit in a constant ionic background (an
+adjuster such as ISA), its <b>ionic strength</b>. The app then</p>
+<ul>
+<li>tries the curve as a <b>flat part plus a Nernstian line</b> in log₁₀ c and keeps that only if it fits clearly better than one line;</li>
+<li>leaves the <b>curved corner</b> between the two out of both lines, since it bends a true 59 mV/decade slope to about 57;</li>
+<li>reports the <b>slope</b> as a percentage of 2.303·R·T/(z·F) for that charge and temperature, and says so when it is sub-Nernstian (an ageing or
+fouled membrane, or interference), super-Nernstian (usually a wrong charge) or of the wrong sign;</li>
+<li>gives the <b>IUPAC detection limit</b>, the concentration where the extrapolated flat part and the extrapolated line cross, and the limits of the
+Nernstian region. If the response is straight to the lowest standard there is no limit to read off and it says the limit lies below the range;</li>
+<li>gives the <b>standard potential E°</b> at an activity of 1 M. With an ionic strength it uses the Davies activity coefficient (good to about 0.5 M);
+without one, concentration is taken as activity;</li>
+<li>describes each unknown by where it falls: <i>below the detection limit</i> (report it as below the limit, not as a value), <i>in the curved foot</i>
+below the Nernstian region (approximate), or <i>above the region</i> (an extrapolation). Unknowns are read from the Nernstian line only.</li>
+</ul>
+<p>The potential must be in mV or V; volts are converted. The <b>selectivity coefficient</b> log K<sup>pot</sup> of the Nikolsky–Eisenman equation by the
+separate-solution and fixed-interference methods is available to scripts as <code>echem_analyzer.potentiometry.log_k_ssm</code> and
+<code>log_k_fim</code>.</p>
 """),
     Topic("cottrell", "Analyses", "Cottrell and Anson", """
 <h2>Cottrell and Anson analysis</h2>
