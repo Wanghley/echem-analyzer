@@ -28,7 +28,8 @@ SHORTCUTS = [
     ("Ctrl/⌘ + N", "New project"), ("Ctrl/⌘ + O", "Open project…"), ("Ctrl/⌘ + S", "Save project"),
     ("Ctrl/⌘ + Shift + S", "Save project as…"), ("Ctrl/⌘ + W", "Close project (asks about unsaved changes)"),
     ("Ctrl/⌘ + Shift + O", "Add data files…"), ("Ctrl/⌘ + Alt + O", "Add data folder…"),
-    ("Ctrl/⌘ + Shift + I", "Import a table from any instrument…"), ("Ctrl/⌘ + E", "Export report (PDF)…"),
+    ("Ctrl/⌘ + Shift + I", "Import a table from any instrument…"), ("Ctrl/⌘ + Shift + B", "Bench calculators…"),
+    ("Ctrl/⌘ + E", "Export report (PDF)…"),
     ("Ctrl/⌘ + Shift + E", "Export workbook (Excel)…"), ("Ctrl/⌘ + Shift + H", "Home (start page; the project stays open)"),
     ("Ctrl/⌘ + ,", "Settings"), ("F1", "This guide"), ("Ctrl/⌘ + Q", "Quit"),
 ]
@@ -92,6 +93,28 @@ result by hand.</p>
 <p>The readers marked <b>preview</b> (Gamry, CH Instruments, BioLogic, Autolab) were written from the manufacturers' file
 descriptions and checked only on synthetic files. Open the first real file of each kind next to the instrument's own software and
 compare a curve; a CV whose scan rate the file does not state gets one estimated from its time and potential columns, and says so.</p>
+"""),
+    Topic("bench", "Getting started", "Bench calculators", """
+<h2>Bench calculators</h2>
+<p><i>Tools ▸ Bench calculators…</i> (<b>Ctrl/⌘ + Shift + B</b>) holds the arithmetic done on paper at the bench. Every page recomputes
+as you type, and says in plain words what is missing or cannot be right. The window is built once, so what you typed is still there
+when you open it again.</p>
+<ul>
+<li><b>Dilution.</b> C₁·V₁ = C₂·V₂: fill any three boxes. Both concentrations share a unit, both volumes another.</li>
+<li><b>Serial dilution.</b> Tubes diluted from one another by a constant factor, each ending at the volume you give.</li>
+<li><b>Standard addition.</b> The stock volumes to pipette so the cell reaches each target concentration. It is the exact inverse of the
+model the standard-addition analysis uses, C = c<sub>s</sub>·ΣV/(V₀+ΣV), so entering these volumes in the analysis gives your targets back.
+Volumes can be rounded to what your pipette sets (the concentration actually reached is then recalculated), and it warns when an addition is
+smaller than the pipette's range or when the additions dilute the matrix by more than 5 %. <i>Copy table</i> puts the plan on the clipboard.</li>
+<li><b>Expected signal.</b> The Randles–Sevcik peak current of a couple at a scan rate, and the smallest decade current range that holds it with
+50 % headroom. Too small a range clips the peak; too large a range loses resolution. The table lists several scan rates, for a scan-rate study.</li>
+<li><b>Nernst slope.</b> 2.303·R·T/(z·F) per decade for the charge you give, the potential change between two concentrations, and how the slope
+moves with temperature, which matters for a sensor worn on skin.</li>
+<li><b>Ionic strength.</b> I = ½ Σ cᵢzᵢ² and the Debye length of the solution. A field-effect or label-free sensor only senses binding within a few
+Debye lengths of its surface, which is why a sample diluted for the measurement can respond differently from the same sample neat. Salts are
+taken as fully dissociated, so phosphate buffers are approximate.</li>
+<li><b>Weighing.</b> Milligrams to dissolve for a given concentration, volume and molar mass.</li>
+</ul>
 """),
     Topic("checks", "Getting started", "Import checks", f"""
 <h2>Import checks</h2>

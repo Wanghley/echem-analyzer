@@ -176,7 +176,7 @@ def test_help_window_navigates_and_searches(qapp, tmp_path):
     assert h.tree.currentItem().data(0, 256) in shown and "Nernst" in h.view.toPlainText()          # the open topic stays if it still matches
     h._link(QUrl("topic:start"))
     h.search.setText("nernst")
-    assert h.tree.currentItem().data(0, 256) == "potentiometry"                                    # else the first match opens
+    assert h.tree.currentItem().data(0, 256) == help_content.search("nernst")[0].id                # else the first match opens
     h.search.setText("zzzzqq")
     assert "No topic matches" in h.view.toPlainText()
     h.search.clear()

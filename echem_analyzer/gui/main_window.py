@@ -27,6 +27,7 @@ from .cv_tab import CVTab
 from .electrode_tab import ElectrodeTab
 from .help_dialog import HelpDialog
 from .about_dialog import AboutDialog
+from .bench_dialog import BenchDialog
 from .import_dialog import ImportDialog
 from .measurements_tab import MeasurementsTab
 from .project_dialog import ProjectInfoDialog
@@ -238,6 +239,10 @@ class MainWindow(QMainWindow):
             appearance.addAction(a)
             self.theme_actions[mode] = a
 
+        tools = self.menuBar().addMenu("&Tools")
+        self.act_bench = self._action(tools, "Bench calculators…", self.show_bench, QKeySequence("Ctrl+Shift+B"))
+        self.act_checks = self._action(tools, "Review import checks", self.show_import_checks)
+
         h = self.menuBar().addMenu("&Help")
         self._action(h, "Guide", self.show_help, QKeySequence("F1"))
         self._action(h, "Keyboard shortcuts", lambda: self.show_help("shortcuts"))
@@ -344,6 +349,24 @@ class MainWindow(QMainWindow):
         self._settings.show()
         self._settings.raise_()
         self._settings.activateWindow()
+
+    def show_bench(self, page: Optional[str] = None) -> None:
+        """The bench calculators: one window, built once, so what was typed is still there next time."""
+        if getattr(self, "_bench", None) is None:
+            self._bench = BenchDialog(self)
+        if isinstance(page, str):
+            self._bench.show_page(page)
+        self._bench.show()
+        self._bench.raise_()
+        self._bench.activateWindow()
+
+    def show_import_checks(self) -> None:
+        """Jump to the Measurements table, where each curve's import checks are listed."""
+        if not self.session.files:
+            self.statusBar().showMessage("Nothing is loaded yet: the import checks run on files you add.", 5000)
+            return
+        self.show_work()
+        self.tabs.setCurrentWidget(self.measurements_tab)
 
     def show_help(self, topic: str = "start") -> None:
         topic = topic if isinstance(topic, str) else "start"
