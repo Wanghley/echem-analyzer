@@ -72,6 +72,47 @@ def _trust_store(ctx):
     return f"{n} trusted CA certificates (list: {Path(cafile).name})"
 
 
+def _instrument_files(folder: Path, t: np.ndarray, i_amp: np.ndarray) -> dict[str, Path]:
+    """The same chronoamperogram in each vendor's layout (tiny files: the readers' import chain is what is being proved)."""
+    rows = list(zip(t, i_amp))
+    layouts = {
+        "gamry": ("run.dta", "EXPLAIN\t\nTAG\tCHRONOA\nTITLE\tLABEL\tselftest\tTest &Identifier\n"
+                  f"CURVE\tTABLE\t{len(rows)}\tCurve\n\tPt\tT\tVf\tIm\n\t#\ts\tV\tA\n"
+                  + "".join(f"\t{k}\t{a}\t0.3\t{b}\n" for k, (a, b) in enumerate(rows))),
+        "chi": ("run.txt", "Nov. 5, 2026   10:30:11\nAmperometric i-t Curve\nInstrument Model:  CHI660E\n\nTime/sec, Current/A\n\n"
+                + "".join(f"{a}, {b}\n" for a, b in rows)),
+        "biologic": ("run.mpt", "EC-Lab ASCII FILE\nNb header lines : 5\n\nChronoamperometry / Chronocoulometry\ntime/s\tEwe/V\t<I>/mA\n"
+                     + "".join(f"{a}\t0.3\t{b * 1e3}\n" for a, b in rows)),
+        "autolab": ("nova.txt", "Time (s);WE(1).Current (A);WE(1).Potential (V)\n" + "".join(f"{a};{b};0.3\n" for a, b in rows)),
+    }
+    out = {}
+    for key, (name, text) in layouts.items():
+        out[key] = folder / name
+        out[key].write_text(text, encoding="utf-8")
+    return out
+
+
+@step("read instrument files and check them")
+def _readers_and_checks(ctx):
+    from . import dataqc, readers
+    t = np.linspace(0, 20, 101)
+    i_amp = 2e-6 + 1e-7 * np.sin(t)
+    i_amp[-1] += 5e-6                                          # the end-of-run spike the checks must find
+    folder = Path(ctx["tmp"]) / "instruments"
+    folder.mkdir()
+    files = _instrument_files(folder, t, i_amp)
+    loaded = {}
+    for key, path in files.items():
+        assert readers.pick(path) is not None and readers.pick(path).key == key, f"{path.name} is not recognised as {key}"
+        loaded[key] = readers.load(path)
+        c = loaded[key].curves[0]
+        assert c.kind == "CA" and c.n == len(t) and abs(c.y[0] - 2.0) < 1e-6, f"{key}: read as {c.kind}, {c.n} points, y[0] = {c.y[0]}"
+    flags = dataqc.check_files(loaded.values())
+    spiky = sum(any(f.code == "spike" for f in v) for v in flags.values())
+    assert spiky == 4, f"the spike was found in {spiky} of 4 files"
+    return f"{len(loaded)} instrument layouts read; the checks found the injected spike in each"
+
+
 @step("analyse, calibrate, report")
 def _analysis(ctx):
     from .report import build_report
