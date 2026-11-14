@@ -83,7 +83,10 @@ def _spikes(y: np.ndarray) -> np.ndarray:
     off = np.abs(y - median_filter(y, size=SPIKE_WINDOW, mode="nearest"))
     off[0] = 0.0
     off[-1] = abs(y[-1] - _extrapolated(y[-6:-1], 5))
-    threshold = max(SPIKE_SIGMAS * 1.4826 * float(np.median(off[1:-1])), SPIKE_MIN_FRACTION * span)
+    inner = off[1:-1]
+    moving = inner[inner > 0]                          # exactly flat stretches (a clipped plateau) say nothing about the noise
+    noise = 1.4826 * float(np.median(moving)) if moving.size else 0.0
+    threshold = max(SPIKE_SIGMAS * noise, SPIKE_MIN_FRACTION * span)
     return np.flatnonzero(off > threshold)
 
 

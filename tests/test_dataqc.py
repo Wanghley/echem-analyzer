@@ -92,6 +92,12 @@ def test_the_start_of_a_transient_and_a_steady_drift_are_not_spikes():
     assert codes(make("OCP", np.arange(121.0), settle, "s", "V")) == []
 
 
+def test_a_clipped_trace_is_not_also_reported_as_a_storm_of_spikes():
+    t, ca = staircase(noise=0.01)
+    clipped = np.minimum(ca, 2.0)                    # two thirds of the trace is now exactly constant; the rest is still noisy
+    assert codes(make("CA", t, clipped)) == ["clipped"]
+
+
 def test_flat_and_very_short_traces():
     t = np.linspace(0, 10, 101)
     assert codes(make("CA", t, np.full_like(t, 0.7))) == ["flat"]
