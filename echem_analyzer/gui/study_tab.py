@@ -843,8 +843,28 @@ class VariantsPanel(_Panel):
         for w in (self.quantity, self.condition, self.param, self.metric):
             w.currentIndexChanged.connect(self._changed)
         session.files_changed.connect(self.refresh)
+        self.btn_sheet = QPushButton("Export datasheet (PDF)…")
+        self.btn_sheet.setToolTip("One page per variant: how it was made, how it performs, and its calibration.")
+        self.btn_sheet.clicked.connect(self.export_datasheet)
+        self.form.addRow(self.btn_sheet)
         self._loading = False
         self.refresh()
+
+    def export_datasheet(self) -> bool:
+        from PySide6.QtWidgets import QFileDialog
+        from .. import datasheet
+        from ..report_pdf import write_pdf
+        q = self.quantity.currentText()
+        try:
+            report = datasheet.build(self.session.to_project_data(), q, self.condition.currentText() or "analyte")
+        except ValueError as exc:
+            QMessageBox.information(self, "Export datasheet", str(exc))
+            return False
+        path, _ = QFileDialog.getSaveFileName(self, "Export datasheet", f"datasheet_{q}.pdf".replace(" ", "_"), "PDF (*.pdf)")
+        if not path:
+            return False
+        write_pdf(report, path)
+        return True
 
     def _refill_dependent(self) -> None:
         rs, q = self.session.responses, self.quantity.currentText()
