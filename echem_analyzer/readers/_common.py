@@ -11,7 +11,9 @@ from typing import Iterable, Optional, Sequence
 
 import numpy as np
 
+from .. import techniques
 from ..io_palmsens import decode_text
+from ..models import Curve
 
 HEAD_CHARS = 8192                  # how much of a file the readers look at to recognise it
 
@@ -169,3 +171,75 @@ def orient_impedance(freq: np.ndarray, zre: np.ndarray, zim: np.ndarray) -> tupl
         zim = -zim
     order = np.argsort(-freq, kind="stable")
     return freq[order], zre[order], zim[order]
+
+
+# --------------------------------------------------------------------------- arrays -> curves
+
+def impedance_curve(path: Path, title: str, freq, zre, zim, meta: dict) -> Optional[Curve]:
+    """A Nyquist curve (x = Z′, y = −Z″) carrying freq / zre / zim in ``extra``; None when fewer than two usable points."""
+    f, zr, zi = orient_impedance(freq, zre, zim)
+    if f.size < 2:
+        return None
+    return Curve(kind=techniques.EIS, title="Impedance", x=zr, y=-zi, x_unit="Ω", y_unit="Ω", source=str(path),
+                 meta={**meta, "run_title": title, "method_id": "eis"}, extra={"freq": f, "zre": zr, "zim": zi})
+
+
+def build_curves(path: Path, tech: str, title: str, *, t=None, e=None, i_ua=None, meta: Optional[dict] = None,
+                 scan: Optional[int] = None, scan_labels=None, rate: Optional[float] = None) -> list[Curve]:
+    """The curve(s) of one non-impedance measurement from its columns (time s, potential V, current µA).
+
+    * potentiometry (OCP, CP): potential against time;
+    * voltammetry: current against potential, a CV cut into one curve per scan;
+    * everything else (CA, CC, ...): current against time.
+
+    A CV is split by ``scan`` (this table is that one scan), else by ``scan_labels`` (a cycle number per sample), else at the
+    reversal points of the potential.  ``rate`` is the scan rate in V/s the file states; without it one is estimated.
+    """
+    arrays = {"t": t, "e": e, "i": i_ua}
+    arrays = {k: (None if v is None else np.asarray(v, float)) for k, v in arrays.items()}
+    if tech in (techniques.OCP, techniques.CP):
+        use, x_key, y_key, y_unit = ("t", "e"), "t", "e", "V"
+    elif techniques.is_voltammetric(tech):
+        use, x_key, y_key, y_unit = ("e", "i"), "e", "i", "µA"
+    else:
+        use, x_key, y_key, y_unit = ("t", "i"), "t", "i", "µA"
+    if any(arrays[k] is None for k in use):
+        return []
+    n = min(len(v) for v in arrays.values() if v is not None)
+    arrays = {k: (None if v is None else v[:n]) for k, v in arrays.items()}
+    labels = None if scan_labels is None else np.asarray(scan_labels)[:n]
+    keep = np.isfinite(arrays[x_key]) & np.isfinite(arrays[y_key])
+    arrays = {k: (None if v is None else v[keep]) for k, v in arrays.items()}
+    labels = None if labels is None else labels[keep]
+    x, y = arrays[x_key], arrays[y_key]
+    if x.size < 2:
+        return []
+
+    base = {"run_title": title, "measurement_index": 0, "method_id": tech.lower(), **(meta or {})}
+    short = techniques.short(tech)
+    x_unit = "s" if x_key == "t" else "V"
+
+    def one(a: int, b: int, ctitle: str, scan_no: Optional[int] = None, extra_meta: Optional[dict] = None) -> Curve:
+        return Curve(kind=tech, title=ctitle, x=x[a:b], y=y[a:b], x_unit=x_unit, y_unit=y_unit, scan=scan_no, source=str(path),
+                     meta={**base, **(extra_meta or {})})
+
+    if tech == techniques.CV:
+        if scan is not None:
+            ranges = [(0, x.size, scan)]
+        elif labels is not None and np.unique(labels).size > 1:
+            order = list(dict.fromkeys(labels.tolist()))
+            ranges = []
+            for k, lab in enumerate(order, start=1):
+                idx = np.flatnonzero(labels == lab)
+                ranges.append((int(idx[0]), int(idx[-1]) + 1, k))
+        else:
+            ranges = [(a, b, k) for k, (a, b) in enumerate(scans_from_segments(x), start=1)]
+        t_all = arrays["t"]
+        return [one(a, b, f"CV i vs E Scan {k}", k, sweep_meta(None if t_all is None else t_all[a:b], x[a:b], rate))
+                for a, b, k in ranges if b - a >= 2]
+    if tech == techniques.CA or (tech == techniques.OTHER and x_key == "t"):
+        c = one(0, x.size, "CA i vs t" if tech == techniques.CA else "i vs t", None, {"dt": float(np.median(np.diff(x)))})
+        return [c]
+    if tech in (techniques.OCP, techniques.CP):
+        return [one(0, x.size, f"{short} E vs t")]
+    return [one(0, x.size, f"{short} {'i' if y_key == 'i' else 'y'} vs {'E' if x_key == 'e' else 't'}")]

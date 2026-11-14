@@ -9,13 +9,10 @@ import re
 from pathlib import Path
 from typing import Optional
 
-import numpy as np
-
 from .. import techniques
 from ..models import Curve, DataFile
 from . import Reader, register
-from ._common import (current_scale, find_column, number, orient_impedance, read_text, rows_to_array, scans_from_segments,
-                      sweep_meta)
+from ._common import build_curves, current_scale, find_column, impedance_curve, number, read_text, rows_to_array
 
 TAGS = {
     "CV": techniques.CV, "LSV": techniques.LSV, "DPV": techniques.DPV, "SWV": techniques.SWV, "SQWV": techniques.SWV,
@@ -87,67 +84,45 @@ def _table_curves(path: Path, tech: str, name: str, cols: list[str], units: list
     data = rows_to_array(rows, len(cols))
     if data.shape[0] < 2:
         return []
-    meta = {"run_title": title, "measurement_index": 0, "method_id": tech.lower(), "device": header.get("PSTAT", ("", ""))[0],
+    meta = {"device": header.get("PSTAT", ("", ""))[0],
             "timestamp": f"{header.get('DATE', ('', ''))[0]} {header.get('TIME', ('', ''))[0]}".strip()}
 
     def col(*names: str) -> Optional[int]:
         return find_column(cols, *[rf"^{re.escape(n)}$" for n in names])
 
-    def make(kind, ctitle, x, y, x_unit, y_unit, **kw) -> Curve:
-        return Curve(kind=kind, title=ctitle, x=x, y=y, x_unit=x_unit, y_unit=y_unit, source=str(path), **kw)
-
     if tech == techniques.EIS:
         f, zr, zi = col("Freq"), col("Zreal"), col("Zimag")
         if None in (f, zr, zi):
             return []
-        freq, zre, zim = orient_impedance(data[:, f], data[:, zr], data[:, zi])
-        if freq.size < 2:
-            return []
-        return [make(techniques.EIS, "Impedance", zre, -zim, "Ω", "Ω", meta={**meta, "method_id": "eis"},
-                     extra={"freq": freq, "zre": zre, "zim": zim})]
+        c = impedance_curve(path, title, data[:, f], data[:, zr], data[:, zi], meta)
+        return [c] if c else []
 
-    t_i = col("T")
-    sweep = techniques.is_voltammetric(tech)
+    def column(i: Optional[int]):
+        return None if i is None else data[:, i]
+
     pulse = tech in (techniques.DPV, techniques.SWV, techniques.NPV)
-    x_i = col("Vf", "Vstep", "Vfwd", "Vu") if sweep else t_i
-    y_i = (col("Idif", "Im", "Ifwd", "I") if pulse else col("Im", "I", "Idif")) if tech not in (techniques.OCP, techniques.CP) \
-        else col("Vf", "Vm", "Vu")
-    if x_i is None or y_i is None:
-        return []
-    x, y = data[:, x_i], data[:, y_i]
-    keep = np.isfinite(x) & np.isfinite(y)
-    x, y, t = x[keep], y[keep], (data[keep, t_i] if t_i is not None else None)
-    if x.size < 2:
-        return []
+    potentiometric = tech in (techniques.OCP, techniques.CP)
+    i_idx = None if potentiometric else (col("Idif", "Im", "Ifwd", "I") if pulse else col("Im", "I", "Idif"))
+    e_idx = col("Vf", "Vm", "Vu") if potentiometric else col("Vf", "Vstep", "Vfwd", "Vu")
+    scale = current_scale(_unit_token(units, i_idx)) if i_idx is not None else None
+    i_ua = None if i_idx is None else data[:, i_idx] * (scale if scale is not None else 1e6)
 
-    y_unit = "V" if tech in (techniques.OCP, techniques.CP) else "µA"
-    if y_unit == "µA":
-        scale = current_scale(_unit_token(units, y_i))
-        y = y * (scale if scale is not None else 1e6)
-    x_unit = "V" if sweep else "s"
-    short = techniques.short(tech)
-
+    rate = None
     if tech == techniques.CV:
         rate = _scan_rate(header)
-        base = {**meta, **{k: v for k, v in (("e_begin", _quantity(header, "VINIT")), ("e_vtx1", _quantity(header, "VLIM1")),
-                                             ("e_vtx2", _quantity(header, "VLIM2"))) if v is not None}}
-        cycles = int(_quantity(header, "CYCLES") or 1)
-        digits = re.search(r"\d+$", name)
-        if digits is None and cycles > 1:                       # all cycles in one table: cut it at the vertices
-            return [make(techniques.CV, f"CV i vs E Scan {k}", x[a:b], y[a:b], "V", y_unit, scan=k,
-                         meta={**base, **sweep_meta(t[a:b] if t is not None else None, x[a:b], rate)})
-                    for k, (a, b) in enumerate(scans_from_segments(x), start=1)]
-        scan = int(digits.group()) if digits else 1
-        return [make(techniques.CV, f"CV i vs E Scan {scan}", x, y, "V", y_unit, scan=scan,
-                     meta={**base, **sweep_meta(t, x, rate)})]
-
+        for key, label in (("VINIT", "e_begin"), ("VLIM1", "e_vtx1"), ("VLIM2", "e_vtx2")):
+            v = _quantity(header, key)
+            if v is not None:
+                meta[label] = v
     if tech == techniques.CA:
-        dt = float(np.median(np.diff(x))) if x.size > 1 else 0.0
-        e_step = _quantity(header, "VSTEP1")
-        m = {**meta, "dt": dt, **({"E": e_step} if e_step is not None else {})}
-        return [make(tech, "CA i vs t", x, y, x_unit, y_unit, meta=m)]
-    ytag = "E" if y_unit == "V" else "i"
-    return [make(tech, f"{short} {ytag} vs {'t' if not sweep else 'E'}", x, y, x_unit, y_unit, meta=meta)]
+        v = _quantity(header, "VSTEP1")
+        if v is not None:
+            meta["E"] = v
+    digits = re.search(r"\d+$", name)
+    one_table_of_cycles = tech == techniques.CV and digits is None and (_quantity(header, "CYCLES") or 1) > 1
+    scan = int(digits.group()) if (tech == techniques.CV and digits) else (None if one_table_of_cycles else 1)
+    return build_curves(path, tech, title, t=column(col("T")), e=column(e_idx), i_ua=i_ua, meta=meta,
+                        scan=scan if tech == techniques.CV else None, rate=rate)
 
 
 def load(path: str | Path) -> DataFile:
