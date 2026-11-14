@@ -19,7 +19,7 @@ from .ca_analysis import sync_step_lists
 from .models import CAAnalysisSettings, CVSettings
 
 STORE_VERSION = 1
-KIND_CA, KIND_CV = "ca", "cv"
+KIND_CA, KIND_CV, KIND_QC = "ca", "cv", "qc"        # QC: a named set of electrode acceptance rules (see acceptance.py)
 
 # Protocol fields only: step_times / ignored_events / per-step overrides and inclusion flags
 # describe one particular run, so they are not part of a preset.
@@ -185,14 +185,14 @@ class PresetStore:
         self._data = self._read()
 
     def _read(self) -> dict[str, Any]:
-        empty = {"version": STORE_VERSION, KIND_CA: {}, KIND_CV: {}}
+        empty = {"version": STORE_VERSION, KIND_CA: {}, KIND_CV: {}, KIND_QC: {}}
         if not self.path.is_file():
             return empty
         try:
             raw = json.loads(self.path.read_text(encoding="utf-8"))
             if not isinstance(raw, dict):
                 raise ValueError("top level is not an object")
-            for kind in (KIND_CA, KIND_CV):
+            for kind in (KIND_CA, KIND_CV, KIND_QC):
                 if not isinstance(raw.get(kind, {}), dict):
                     raise ValueError(f"'{kind}' is not an object")
                 raw.setdefault(kind, {})
