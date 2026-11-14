@@ -26,7 +26,11 @@ from helpers import make_window
 BASE = "https://github.com/Wanghley/echem-analyzer/releases/download"
 
 
-def release(version="0.6.0", notes="## What's new\n- better things"):
+# Every "newer" release below is 99.0.0: far above any real version, so these tests keep meaning "an update is available" after the app's own
+# version moves on (they once used the next release's number, and broke the day it was released).
+
+
+def release(version="99.0.0", notes="## What's new\n- better things"):
     names = [updater.asset_name(k, version) for k in ("macos-arm64", "macos-x86_64", "windows-x64", "linux-amd64")] + [updater.SUMS_NAME]
     return updater.parse_release({
         "tag_name": f"v{version}", "name": "x", "body": notes, "draft": False, "prerelease": False,
@@ -52,7 +56,7 @@ def idle(qapp, mgr):
 class Fakes:
     """Controllable stand-ins for the network, the download and the launch."""
 
-    def __init__(self, version="0.6.0"):
+    def __init__(self, version="99.0.0"):
         self.release = release(version)
         self.fetch_calls = 0
         self.fetch_threads: list[int] = []
@@ -140,13 +144,13 @@ def test_a_check_runs_off_the_gui_thread_and_finds_the_newer_release(qapp, mgr, 
     check_and_wait(qapp, mgr)
     assert fakes.fetch_threads and all(t != threading.get_ident() for t in fakes.fetch_threads)      # never on the GUI thread
     assert seen[0] is State.CHECKING and mgr.state is State.AVAILABLE
-    assert mgr.release.text == "0.6.0" and mgr.asset.name == "Echem-Analyzer-0.6.0-macos-arm64.dmg" and mgr.can_auto_install
-    assert prefs.get("update_seen") == "0.6.0" and prefs.get("last_update_check") == mgr.clock[0]
-    assert mgr.badge_text() == "Update available · v0.6.0"
+    assert mgr.release.text == "99.0.0" and mgr.asset.name == "Echem-Analyzer-99.0.0-macos-arm64.dmg" and mgr.can_auto_install
+    assert prefs.get("update_seen") == "99.0.0" and prefs.get("last_update_check") == mgr.clock[0]
+    assert mgr.badge_text() == "Update available · v99.0.0"
 
 
 def test_up_to_date_clears_the_remembered_update(qapp, mgr, fakes):
-    prefs.set("update_seen", "0.6.0")
+    prefs.set("update_seen", "99.0.0")
     fakes.release = release(__version__)
     check_and_wait(qapp, mgr)
     assert mgr.state is State.UP_TO_DATE and prefs.get("update_seen") == "" and mgr.badge_text() == ""
@@ -190,8 +194,8 @@ def test_the_startup_check_obeys_the_preference_and_the_daily_limit(qapp, mgr, f
 
 def test_a_known_pending_update_is_rechecked_at_startup_even_within_a_day(qapp, mgr, fakes):
     prefs.set("last_update_check", mgr.clock[0] - 60)
-    prefs.set("update_seen", "0.6.0")
-    assert mgr.hint_version() == "0.6.0" and mgr.badge_text() == "Update available · v0.6.0"       # shown before any network
+    prefs.set("update_seen", "99.0.0")
+    assert mgr.hint_version() == "99.0.0" and mgr.badge_text() == "Update available · v99.0.0"       # shown before any network
     mgr.startup_check()
     idle(qapp, mgr)
     assert fakes.fetch_calls == 1 and mgr.state is State.AVAILABLE
@@ -325,10 +329,10 @@ def put(mgr, state, rel=None, auto=True):
     (State.IDLE, "Check for updates", "Check for updates", True, False),
     (State.CHECKING, "Checking for updates…", "Checking…", False, False),
     (State.UP_TO_DATE, "You are up to date", "Check again", True, False),
-    (State.AVAILABLE, "Version 0.6.0 is available", "Download and install", True, True),
-    (State.DOWNLOADING, "Downloading version 0.6.0…", "Cancel", True, False),
-    (State.VERIFYING, "Verifying version 0.6.0…", "Verifying…", False, False),
-    (State.READY, "Version 0.6.0 is ready to install", "Install and restart", True, True),
+    (State.AVAILABLE, "Version 99.0.0 is available", "Download and install", True, True),
+    (State.DOWNLOADING, "Downloading version 99.0.0…", "Cancel", True, False),
+    (State.VERIFYING, "Verifying version 99.0.0…", "Verifying…", False, False),
+    (State.READY, "Version 99.0.0 is ready to install", "Install and restart", True, True),
     (State.INSTALLING, "Installing the update…", "Installing…", False, False),
     (State.ERROR, "The update did not finish", "Try again", True, True),
 ])
@@ -395,7 +399,7 @@ def test_notes_are_hidden_when_there_are_none_and_follow_the_version(qapp, mgr, 
     put(mgr, State.AVAILABLE, release(notes="   "))
     assert not panel.notes_toggle.isVisibleTo(panel)
     put(mgr, State.AVAILABLE, release(notes="- something"))
-    assert panel.notes_toggle.isVisibleTo(panel) and "0.6.0" in panel.notes_toggle.text()
+    assert panel.notes_toggle.isVisibleTo(panel) and "99.0.0" in panel.notes_toggle.text()
     assert not panel.notes.isVisibleTo(panel)                                    # folded until asked for
     panel.notes_toggle.click()
     assert panel.notes.isVisibleTo(panel)
@@ -465,8 +469,8 @@ def test_the_toolbar_badge_and_the_start_page_follow_the_manager(qapp, win, fake
     win.updates._fetch, win.updates.kind, win.updates.key = fakes.fetch, "installed", "macos-arm64"
     assert not win.update_btn.isVisibleTo(win) and not win.welcome.update_pill.isVisibleTo(win.welcome)
     check_and_wait(qapp, win.updates)
-    assert win.update_btn.isVisible() and "v0.6.0" in win.update_btn.text() and not win.update_btn.icon().isNull()
-    assert win.welcome.update_pill.isVisible() and "v0.6.0" in win.welcome.update_pill.text()
+    assert win.update_btn.isVisible() and "v99.0.0" in win.update_btn.text() and not win.update_btn.icon().isNull()
+    assert win.welcome.update_pill.isVisible() and "v99.0.0" in win.welcome.update_pill.text()
     prefs.set("update_seen", "")
     win.updates._set(State.UP_TO_DATE)
     qapp.processEvents()                                                         # a toolbar hides the widget on its next layout pass
@@ -601,8 +605,8 @@ def test_the_whole_update_chain_on_macos_manager_to_detached_helper_to_replaced_
     # a fake installed app, and a disk image that holds the new version
     src = tmp_path / "src" / "Echem Analyzer.app" / "Contents" / "MacOS"
     src.mkdir(parents=True)
-    (src / "EchemAnalyzer").write_text("NEW 0.6.0")
-    dmg = tmp_path / "Echem-Analyzer-0.6.0-macos-arm64.dmg"
+    (src / "EchemAnalyzer").write_text("NEW 99.0.0")
+    dmg = tmp_path / "Echem-Analyzer-99.0.0-macos-arm64.dmg"
     subprocess.run(["hdiutil", "create", "-volname", "t", "-srcfolder", str(tmp_path / "src"), "-ov", "-format", "UDZO", str(dmg)],
                    check=True, capture_output=True)
     target = tmp_path / "Applications" / "Echem Analyzer.app"
@@ -638,7 +642,7 @@ def test_the_whole_update_chain_on_macos_manager_to_detached_helper_to_replaced_
         assert m.launch_installer() == "" and m.state is State.INSTALLING
         def done() -> bool:
             try:                                                                 # between the helper's two renames the path briefly does not exist
-                return (target / "Contents" / "MacOS" / "EchemAnalyzer").read_text() == "NEW 0.6.0" and opened_log.exists()
+                return (target / "Contents" / "MacOS" / "EchemAnalyzer").read_text() == "NEW 99.0.0" and opened_log.exists()
             except FileNotFoundError:
                 return False
 
