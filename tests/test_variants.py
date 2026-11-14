@@ -89,3 +89,27 @@ def test_what_the_comparison_warns_about():
     assert not none.ok and any("two or more" in w or "two or more standards" in w for w in none.warnings)
     one = vr.compare_variants([r for r in rs if r.group in ("T1", "K1")], {k: devs[k] for k in ("T1", "K1")}, "Peak")
     assert any("one calibrated electrode" in w for w in one.warnings) and math.isnan(one.rows[0].sens_lo)
+
+
+def test_the_variants_tab_compares_plots_and_follows_the_devices_tab(qapp, tmp_path):
+    from helpers import make_window
+    from echem_analyzer import devices as dv
+    win = make_window(tmp_path / "w")
+    rs, devs = batch()
+    win.session.responses[:] = rs
+    dv.save(win.session.extras, devs)
+    win.session.responses_changed.emit()
+    st = win.study_tab
+    assert st.tabs.tabText(st.tabs.count() - 1) == "Variants"
+    panel = st.variants
+    assert [c.label.text() for c in panel.kpis if not c.isHidden()] == ["VARIANTS", "MOST SENSITIVE", "LOWEST LOD", "BEST YIELD"]
+    assert panel.kpis[0].value.text() == "2" and panel.kpis[1].value.text() == "thick" and panel.table.rowCount() == 2
+    assert panel.table.item(0, 0).text() == "thick" and "(" in panel.table.item(0, 2).text()                # the mean with its interval
+    assert [panel.param.itemText(i) for i in range(panel.param.count())] == ["(none)", "ink volume (µL)"]
+    panel.param.setCurrentIndex(1)
+    assert panel.trend.ok and len(panel.plot.fig.axes) == 2 and win.session.extras["study"]["variants"]["param"] == "ink volume (µL)"
+    panel.metric.setCurrentIndex(1)
+    assert panel.trend.metric == "lod" and panel.plot.fig.axes[0].get_ylabel().startswith("Detection limit")
+    win.session.responses[:] = []                                                                         # nothing to compare
+    win.session.responses_changed.emit()
+    assert panel.table.rowCount() == 0 and panel.kpis[0].value.text() == "—"

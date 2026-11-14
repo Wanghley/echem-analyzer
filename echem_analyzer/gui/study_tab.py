@@ -15,6 +15,9 @@ from PySide6.QtWidgets import (
 from .. import calibration as cal
 from .. import plots, theme
 from .. import study_analysis as sa
+from .. import acceptance as acc
+from .. import devices as dv
+from .. import variants as vr
 from ..analyzers import g
 from ..models import Response
 from ..prefs import prefs
@@ -821,6 +824,91 @@ class TemperaturePanel(_Panel):
                    [[f"{r.temp:g}", str(r.n), g(r.mean, 5), g(r.sd, 3), g(r.compensated_mean, 5)] for r in ts.rows])
 
 
+class VariantsPanel(_Panel):
+    key = "variants"
+    figsize = (8.0, 4.2)
+
+    def __init__(self, session: Session):
+        super().__init__(session)
+        self.comparison = None
+        self.trend = None
+        self.quantity, self.condition, self.param, self.metric = (QComboBox() for _ in range(4))
+        self.metric.addItem("Sensitivity", "sensitivity")
+        self.metric.addItem("Detection limit", "lod")
+        for label, w in (("Quantity", self.quantity), ("Condition", self.condition), ("Metric", self.metric), ("Fabrication parameter", self.param)):
+            self.form.addRow(label, w)
+        self.form.addRow(hint("Set each electrode's variant and fabrication parameters in the Devices tab. Each electrode is calibrated on its own, so "
+                              "the interval shows how much electrodes of a variant differ."))
+        self.quantity.currentIndexChanged.connect(self._refill_dependent)
+        for w in (self.quantity, self.condition, self.param, self.metric):
+            w.currentIndexChanged.connect(self._changed)
+        session.files_changed.connect(self.refresh)
+        self._loading = False
+        self.refresh()
+
+    def _refill_dependent(self) -> None:
+        rs, q = self.session.responses, self.quantity.currentText()
+        fill_combo(self.condition, sa.conditions(rs, q))
+        fill_combo(self.param, dv.numeric_params(dv.sync(dv.load(self.session.extras), rs)), first="(none)")
+
+    def refresh(self) -> None:
+        self._loading = True
+        st = self.stored()
+        fill_combo(self.quantity, sa.quantities(self.session.responses), keep=st.get("quantity"))
+        self._refill_dependent()
+        for cb, key in ((self.condition, "condition"), (self.param, "param")):
+            i = cb.findText(st.get(key, ""))
+            if i >= 0:
+                cb.setCurrentIndex(i)
+        i = self.metric.findData(st.get("metric", "sensitivity"))
+        if i >= 0:
+            self.metric.setCurrentIndex(i)
+        self._loading = False
+        self.recompute()
+
+    def _changed(self, *_a) -> None:
+        if not self._loading:
+            self.store({"quantity": self.quantity.currentText(), "condition": self.condition.currentText(),
+                        "param": self.param.currentText() if self.param.currentIndex() > 0 else "", "metric": self.metric.currentData()})
+            self.recompute()
+
+    def recompute(self) -> None:
+        q = self.quantity.currentText()
+        empty = [("Variants", "—", "", ""), ("Most sensitive", "—", "", ""), ("Lowest LOD", "—", "", ""), ("Best yield", "—", "", "")]
+        devs = dv.sync(dv.load(self.session.extras), self.session.responses)
+        self.comparison = self.trend = None
+        if q:
+            self.comparison = vr.compare_variants(self.session.responses, devs, q, self.condition.currentText() or "analyte",
+                                                  acc.load(self.session.extras))
+            if self.param.currentIndex() > 0:
+                self.trend = vr.trend(self.comparison, devs, self.param.currentText(), self.metric.currentData())
+        plots.study_variants(self.plot.fig, self.comparison, self.trend, theme.current(), self.metric.currentData())
+        self.plot.redraw()
+        cmp_ = self.comparison
+        self.show_warnings(cmp_.warnings if cmp_ else [])
+        if cmp_ is None or not cmp_.ok:
+            self.set_kpis(empty)
+            self.table.setRowCount(0)
+            return
+        rows = [r for r in cmp_.rows if math.isfinite(r.sens_mean)] or cmp_.rows
+        best = max(rows, key=lambda r: abs(r.sens_mean) if math.isfinite(r.sens_mean) else -1)
+        lows = [r for r in cmp_.rows if math.isfinite(r.pooled_lod)]
+        low = min(lows, key=lambda r: r.pooled_lod) if lows else None
+        yl = [r for r in cmp_.rows if math.isfinite(r.yield_pct)]
+        top = max(yl, key=lambda r: r.yield_pct) if yl else None
+        self.set_kpis([("Variants", str(len(cmp_.rows)), f"{len(cmp_.per_device)} electrodes", ""),
+                       ("Most sensitive", best.variant, f"{g(best.sens_mean, 3)} {cmp_.sensitivity_unit}", ""),
+                       ("Lowest LOD", low.variant if low else "—", f"{g(low.pooled_lod, 3)} {cmp_.conc_unit}" if low else "", ""),
+                       ("Best yield", top.variant if top else "—", f"{top.yield_pct:.0f} % of {top.n_judged}" if top else "set acceptance rules", "")])
+        table_into(self.table, ["Variant", "Electrodes", f"Sensitivity ({cmp_.sensitivity_unit})", "RSD %", "LOD", "Linear range", "Between-electrode RSD %",
+                                "Retention %", "t90 (s)", "Yield"],
+                   [[r.variant, str(len(r.devices)),
+                     (f"{g(r.sens_mean, 4)} ({g(r.sens_lo, 3)} – {g(r.sens_hi, 3)})" if math.isfinite(r.sens_lo) else g(r.sens_mean, 4)),
+                     g(r.sens_rsd, 3), g(r.pooled_lod, 3), f"{g(r.range_low, 3)} – {g(r.range_high, 3)}" if math.isfinite(r.range_low) else "—",
+                     g(r.repro_rsd, 3), g(r.retention, 4), g(r.t90, 3),
+                     f"{r.yield_pct:.0f} % ({r.yield_lo:.0f}–{r.yield_hi:.0f})" if math.isfinite(r.yield_pct) else "—"] for r in cmp_.rows])
+
+
 class SelectivityPanel(_Panel):
     key = "selectivity"
 
@@ -919,12 +1007,14 @@ class StudyTab(QWidget):
         self.recovery = RecoveryPanel(session, self.calibration)
         self.temperature = TemperaturePanel(session)
         self.devices = DevicesPanel(session)
+        self.variants = VariantsPanel(session)
         self.tabs = QTabWidget()
         self.tabs.setObjectName("SubTabs")
         self.tabs.setDocumentMode(True)
         for w, name in ((self.responses, "Responses"), (self.calibration, "Calibration"), (self.repro, "Reproducibility"),
                         (self.stability, "Stability"), (self.selectivity, "Selectivity"), (self.recovery, "Recovery"),
-                        (self.temperature, "Temperature"), (self.devices, "Devices")):     # last, so a saved tab index still points at the same tab
+                        (self.temperature, "Temperature"), (self.devices, "Devices"),
+                        (self.variants, "Variants")):     # last, so a saved tab index still points at the same tab
             self.tabs.addTab(w, name)
         lay = QVBoxLayout(self)
         lay.setContentsMargins(16, 12, 16, 12)
@@ -932,7 +1022,7 @@ class StudyTab(QWidget):
         self.tabs.currentChanged.connect(lambda _i: self.recovery.recompute())
 
     def refresh_all(self) -> None:
-        for p in (self.calibration, self.repro, self.stability, self.selectivity, self.temperature):
+        for p in (self.calibration, self.repro, self.stability, self.selectivity, self.temperature, self.variants):
             p.refresh()
         self.responses.rebuild()
         self.devices.rebuild()

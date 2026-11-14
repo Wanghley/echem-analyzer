@@ -608,6 +608,50 @@ def study_temperature(fig, ts, p: Palette) -> None:
     ax.legend(loc="lower right", fontsize=8)
 
 
+def study_variants(fig, cmp_, trend, p: Palette, metric: str = "sensitivity") -> None:
+    """Left: each electrode's value with its variant's mean and 95 % interval.  Right: a fabrication parameter against the same metric."""
+    fig.clear()
+    if cmp_ is None or not cmp_.ok:
+        ax = fig.add_subplot(111)
+        _note(ax, "Give electrodes a variant (Devices tab) and standards a Group\nand a concentration (Responses table) to compare variants.", p)
+        ax.set_axis_off()
+        return
+    label = {"sensitivity": f"Sensitivity ({cmp_.sensitivity_unit})", "lod": f"Detection limit ({cmp_.conc_unit})"}[metric]
+    ax = fig.add_subplot(1, 2, 1)
+    names = [r.variant for r in cmp_.rows]
+    colors = _group_colors(names, p)
+    for k, row in enumerate(cmp_.rows):
+        vals = [getattr(d, metric) for d in cmp_.per_device if d.variant == row.variant and math.isfinite(getattr(d, metric))]
+        jitter = (np.arange(len(vals)) - (len(vals) - 1) / 2) * 0.07
+        ax.plot(np.full(len(vals), k) + jitter, vals, "o", color=colors[row.variant], ms=6, mec=p.plot_bg, mew=0.8, zorder=3, alpha=0.9)
+        if metric == "sensitivity" and math.isfinite(row.sens_mean):
+            lo, hi = (row.sens_lo, row.sens_hi) if math.isfinite(row.sens_lo) else (row.sens_mean, row.sens_mean)
+            ax.errorbar([k], [row.sens_mean], yerr=[[row.sens_mean - lo], [hi - row.sens_mean]], fmt="_", color=p.text, ms=16, capsize=5, lw=1.4, zorder=4)
+        elif vals:
+            ax.plot([k], [float(np.mean(vals))], "_", color=p.text, ms=16, mew=1.6, zorder=4)
+    ax.set_xticks(range(len(names)))
+    ax.set_xticklabels(names, rotation=20 if max(len(n) for n in names) > 8 else 0, ha="right" if max(len(n) for n in names) > 8 else "center")
+    ax.set_xlim(-0.6, len(names) - 0.4)
+    ax.set_ylabel(label)
+    ax.set_title("By variant (mean, 95 % interval)" if metric == "sensitivity" else "By variant (mean)", loc="left", color=p.text, fontsize=10)
+    ax2 = fig.add_subplot(1, 2, 2)
+    if trend is None or not len(trend.x):
+        _note(ax2, "Add a numeric fabrication parameter (Devices tab)\nto see whether it matters.", p)
+        ax2.set_axis_off()
+        return
+    ax2.plot(trend.x, trend.y, "o", color=p.trace, ms=6.5, mec=p.plot_bg, mew=0.8, zorder=3)
+    for xv, yv, name in zip(trend.x, trend.y, trend.ids):
+        ax2.annotate(name, (xv, yv), xytext=(4, 4), textcoords="offset points", fontsize=7.5, color=p.muted)
+    if trend.ok:
+        xs = np.linspace(trend.x.min(), trend.x.max(), 50)
+        ax2.plot(xs, trend.slope * xs + trend.intercept, color=p.fit, lw=1.6, zorder=2)
+        ax2.text(0.03, 0.97, f"r = {trend.r:+.2f},  p = {trend.p:.2g}\nn = {len(trend.x)} electrodes", transform=ax2.transAxes, ha="left", va="top",
+                 fontsize=8.6, color=p.text)
+    ax2.set_xlabel(trend.parameter)
+    ax2.set_ylabel(label)
+    ax2.set_title("Against a fabrication parameter", loc="left", color=p.text, fontsize=10)
+
+
 def study_selectivity(fig, ss, p: Palette) -> None:
     fig.clear()
     ax = fig.add_subplot(111)

@@ -117,7 +117,7 @@ def test_the_devices_tab_lists_every_electrode_and_stores_what_is_typed(qapp, tm
     from PySide6.QtWidgets import QInputDialog
     win, panel = make_panel(qapp, tmp_path)
     st = win.study_tab
-    assert st.tabs.tabText(st.tabs.count() - 1) == "Devices"
+    assert st.tabs.tabText(st.tabs.count() - 2) == "Devices" and st.tabs.tabText(st.tabs.count() - 1) == "Variants"      # appended, in this order
     assert [panel.table.item(r, 0).text() for r in range(panel.table.rowCount())] == ["E1", "E2", "E3", "E4"]
     panel.table.item(0, 1).setText("thin ink")
     panel.table.item(1, 1).setText("thin ink")
