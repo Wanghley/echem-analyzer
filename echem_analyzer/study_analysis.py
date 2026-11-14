@@ -336,6 +336,123 @@ def run_calibration(responses: Sequence[Response], opts: CalibrationOptions) -> 
     return out
 
 
+# =============================================================================== temperature
+
+@dataclass
+class TemperatureRow:
+    temp: float
+    n: int
+    mean: float
+    sd: float
+    compensated_mean: float
+
+
+@dataclass
+class TemperatureStudy:
+    quantity: str
+    condition: str
+    conc_unit: str
+    y_unit: str
+    ref_temp: float = 25.0
+    conc: Optional[float] = None                 # the concentration studied (None = every standard)
+    t: np.ndarray = field(default_factory=lambda: np.array([]))
+    y: np.ndarray = field(default_factory=lambda: np.array([]))
+    groups: list[str] = field(default_factory=list)
+    y_compensated: np.ndarray = field(default_factory=lambda: np.array([]))
+    rows: list[TemperatureRow] = field(default_factory=list)
+    fit: Optional[cal.ModelFit] = None           # y against (T − T_ref): intercept = the response at the reference temperature
+    slope: float = NAN                           # response per °C
+    slope_se: float = NAN
+    y_ref: float = NAN
+    y_ref_se: float = NAN
+    alpha: float = NAN                           # temperature coefficient, % of the reference response per °C
+    alpha_se: float = NAN
+    r2: float = NAN
+    rsd_raw: float = NAN                         # RSD of all the responses as measured, %
+    rsd_compensated: float = NAN                 # ... and after dividing out the temperature effect
+    warnings: list[str] = field(default_factory=list)
+
+    @property
+    def ok(self) -> bool:
+        return self.fit is not None and self.fit.ok and math.isfinite(self.alpha)
+
+
+def temperature_compensate(y, temp, alpha_pct_per_c: float, ref_temp: float = 25.0):
+    """The responses as they would have been at the reference temperature: y / (1 + α·(T − T_ref))."""
+    return np.asarray(y, float) / (1.0 + alpha_pct_per_c / 100.0 * (np.asarray(temp, float) - ref_temp))
+
+
+def run_temperature(responses: Sequence[Response], quantity: str, condition: str = "analyte", conc: Optional[float] = None,
+                    conc_unit: str = "", group: Optional[str] = None, ref_temp: float = 25.0) -> TemperatureStudy:
+    """How a sensor's response moves with temperature, and how much compensating for it helps.
+
+    Uses the standards that have a temperature (set it in the Responses table).  The response is fitted as a straight line in
+    T − T_ref, so its intercept is the response at the reference temperature and the **temperature coefficient** is slope/intercept,
+    in % of that response per °C.  Dividing each response by 1 + α·(T − T_ref) gives what it would have read at T_ref; the RSD
+    before and after shows what compensating buys.  A wearable sensor needs this because skin and sweat temperature move by
+    several degrees during use.
+    """
+    rows = [r for r in select(responses, quantity, condition, ("standard",), group) if r.temp_c is not None and math.isfinite(r.temp_c)]
+    unit = conc_unit or pick_unit(rows)
+    out = TemperatureStudy(quantity=quantity, condition=condition, conc_unit=unit, y_unit=next((r.unit for r in rows), ""), ref_temp=ref_temp)
+    if conc is not None:
+        out.conc = conc
+        try:
+            rows = [r for r in rows if r.conc is not None and math.isclose(conc_to(r.conc, r.conc_unit, unit), conc, rel_tol=1e-9, abs_tol=1e-15)]
+        except ValueError as exc:
+            out.warnings.append(str(exc))
+            return out
+    elif len({round(conc_to(r.conc, r.conc_unit, unit), 12) for r in rows if r.conc is not None and r.conc_unit in CONC_FACTORS}) > 1:
+        out.warnings.append("Responses at several concentrations are pooled: a percentage coefficient only makes sense at one concentration, so choose it.")
+    out.t, out.y = np.array([r.temp_c for r in rows], float), np.array([r.value for r in rows], float)
+    out.groups = [r.group for r in rows]
+    levels = sorted({round(float(v), 2) for v in out.t})
+    if len(rows) < 3 or len(levels) < 2:
+        out.warnings.append("A temperature study needs responses at two or more temperatures (set the temperature in the Responses table), three points at least.")
+        return out
+    if len(set(out.groups)) > 1 and not group:
+        out.warnings.append("Responses from several electrodes are pooled; select one electrode if their baselines differ.")
+    if len(levels) == 2:
+        out.warnings.append("Only two temperatures: a line always fits two points, so nothing shows whether the dependence is linear.")
+    if levels[-1] - levels[0] < 5.0:
+        out.warnings.append(f"The temperature range is only {levels[-1] - levels[0]:.1f} °C: the coefficient is poorly determined.")
+    if not levels[0] <= ref_temp <= levels[-1]:
+        out.warnings.append(f"The reference temperature {ref_temp:g} °C is outside the range measured ({levels[0]:g}–{levels[-1]:g} °C): the response there is an extrapolation.")
+
+    x = out.t - ref_temp
+    fit = cal.fit_linear(x, out.y)
+    out.fit = fit
+    if not fit.ok:
+        out.warnings.append(fit.message)
+        return out
+    out.slope, out.slope_se, out.y_ref, out.y_ref_se = fit.p("slope"), fit.se("slope"), fit.p("intercept"), fit.se("intercept")
+    out.r2 = fit.r2
+    if out.y_ref == 0 or abs(out.y_ref) < 1e-12 * max(abs(out.y).max(), 1e-300):
+        out.warnings.append("The response at the reference temperature is zero, so a percentage coefficient is undefined.")
+        return out
+    out.alpha = out.slope / out.y_ref * 100.0
+    n = len(x)
+    if n > 2:                                                    # delta method for slope/intercept, with their covariance
+        s2 = float(np.sum(fit.residuals ** 2) / (n - 2))
+        cov = -float(x.mean()) * s2 / float(np.sum((x - x.mean()) ** 2))
+        ratio = out.slope / out.y_ref
+        var = (out.slope_se ** 2 + ratio ** 2 * out.y_ref_se ** 2 - 2 * ratio * cov) / out.y_ref ** 2
+        out.alpha_se = 100.0 * math.sqrt(max(var, 0.0))
+        if math.isfinite(out.alpha_se) and abs(out.alpha) < 2 * out.alpha_se:
+            out.warnings.append(f"The temperature coefficient ({out.alpha:+.2f} ± {out.alpha_se:.2f} %/°C) is not clearly different from zero.")
+    out.y_compensated = temperature_compensate(out.y, out.t, out.alpha, ref_temp)
+
+    def rsd(v: np.ndarray) -> float:
+        return float(np.std(v, ddof=1) / abs(np.mean(v)) * 100.0) if len(v) > 1 and np.mean(v) else NAN
+
+    out.rsd_raw, out.rsd_compensated = rsd(out.y), rsd(out.y_compensated)
+    for lv in levels:
+        m = np.abs(out.t - lv) < 0.005
+        out.rows.append(TemperatureRow(lv, int(m.sum()), float(out.y[m].mean()), float(out.y[m].std(ddof=1)) if m.sum() > 1 else NAN,
+                                       float(out.y_compensated[m].mean())))
+    return out
+
+
 # =============================================================================== reproducibility
 
 @dataclass

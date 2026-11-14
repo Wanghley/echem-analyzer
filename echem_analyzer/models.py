@@ -259,6 +259,7 @@ class Response:
     condition: str = "analyte"     # which species: "analyte", an interferent's name, ...
     group: str = ""                # electrode / device / batch id
     time: Optional[float] = None   # when it was measured (e.g. days since fabrication), for stability
+    temp_c: Optional[float] = None # the temperature it was measured at, for the temperature study
     role: str = "standard"         # standard | blank | sample
     use: bool = True
     note: str = ""

@@ -152,3 +152,112 @@ def test_a_drift_free_trace_is_not_changed_by_asking_for_the_correction():
     assert deltas(corrected) == pytest.approx(deltas(plain), abs=0.02)
     drift = float(next(r for r in corrected.rows if r[0] == "Baseline drift removed")[1])
     assert abs(drift) < 0.05                                                          # µA/min: nothing to remove
+
+
+# ===================================================================== temperature
+
+def temp_responses(temps, alpha=2.0, y25=100.0, conc=10.0, noise=0.0, seed=1, group="E1", reps=1, conc_unit="µM", quantity="Signal"):
+    """A signal that changes by `alpha` % of its 25 °C value per °C."""
+    from echem_analyzer.models import Response
+    rng = np.random.default_rng(seed)
+    rs = []
+    for i, t_c in enumerate(temps):
+        for j in range(reps):
+            rs.append(Response(id=f"t{i}_{j}", source_label=f"{t_c:g} °C #{j + 1}", quantity=quantity, unit="nA", conc=conc, conc_unit=conc_unit,
+                               value=float(y25 * (1 + alpha / 100 * (t_c - 25.0)) + rng.normal(0, noise)), group=group, role="standard", temp_c=float(t_c)))
+    return rs
+
+
+def run_t(rs, **kw):
+    from echem_analyzer import study_analysis as sa
+    return sa.run_temperature(rs, "Signal", **kw)
+
+
+def test_the_temperature_coefficient_is_recovered_and_compensation_removes_it():
+    ts = run_t(temp_responses([15, 20, 25, 30, 35], alpha=2.0))
+    assert ts.ok and ts.alpha == pytest.approx(2.0) and ts.y_ref == pytest.approx(100.0) and ts.r2 == pytest.approx(1.0)
+    assert ts.slope == pytest.approx(2.0)                                                # nA per °C
+    assert ts.rsd_raw > 10.0 and ts.rsd_compensated == pytest.approx(0.0, abs=1e-9)        # 2 %/°C over ±10 °C is a ±20 % swing
+    assert [row.temp for row in ts.rows] == [15, 20, 25, 30, 35]
+    assert all(row.compensated_mean == pytest.approx(100.0) for row in ts.rows)
+    assert ts.warnings == []
+
+
+def test_a_negative_coefficient_and_another_reference_temperature():
+    cold = run_t(temp_responses([10, 15, 20, 25, 30], alpha=-1.5, y25=40.0))
+    assert cold.alpha == pytest.approx(-1.5) and cold.y_ref == pytest.approx(40.0)
+    at37 = run_t(temp_responses([30, 33, 36, 39, 42], alpha=2.0), ref_temp=37.0)
+    y37 = 100.0 * (1 + 0.02 * 12)
+    assert at37.y_ref == pytest.approx(y37) and at37.alpha == pytest.approx(2.0 * 100.0 / y37)         # the same slope, a larger reference value
+    assert all(row.compensated_mean == pytest.approx(y37) for row in at37.rows)                         # everything referred to 37 °C
+
+
+def test_the_coefficients_uncertainty_is_honest():
+    estimates, covered = [], 0
+    for seed in range(300):
+        ts = run_t(temp_responses([20, 25, 30, 35, 40], alpha=2.0, noise=2.0, reps=2, seed=seed))
+        estimates.append(ts.alpha)
+        covered += abs(ts.alpha - 2.0) <= 2.0 * ts.alpha_se                                              # about a 95 % interval
+    assert np.mean(estimates) == pytest.approx(2.0, abs=0.05)
+    assert covered / 300 > 0.90
+
+
+def test_replicates_are_counted_per_temperature():
+    ts = run_t(temp_responses([20, 30, 40], alpha=1.0, reps=3, noise=0.3))
+    assert [row.n for row in ts.rows] == [3, 3, 3] and all(row.sd > 0 for row in ts.rows)
+    assert len(ts.t) == 9 and len(ts.y_compensated) == 9
+
+
+def test_one_concentration_at_a_time_and_a_warning_when_several_are_pooled():
+    from echem_analyzer.models import Response
+    low = temp_responses([15, 25, 35], alpha=2.0, y25=50.0, conc=5.0)
+    high = temp_responses([15, 25, 35], alpha=2.0, y25=200.0, conc=20.0)
+    for r in high:
+        r.id += "h"
+    both = low + high
+    pooled = run_t(both)
+    assert any("several concentrations are pooled" in w for w in pooled.warnings)
+    only_low = run_t(both, conc=5.0)
+    assert only_low.alpha == pytest.approx(2.0) and only_low.y_ref == pytest.approx(50.0) and len(only_low.t) == 3
+    assert not any("pooled" in w for w in only_low.warnings)
+    in_mm = run_t(both, conc=0.005, conc_unit="mM")                                       # the same 5 µM, asked for in mM
+    assert in_mm.conc_unit == "mM" and len(in_mm.t) == 3 and in_mm.y_ref == pytest.approx(50.0)
+    assert run_t(low + [Response(id="x", quantity="Signal", unit="nA", value=1.0, role="standard")]).ok   # a response without a temperature is ignored
+
+
+def test_what_the_study_warns_about():
+    assert any("two or more temperatures" in w for w in run_t(temp_responses([25])).warnings)
+    assert any("two or more temperatures" in w for w in run_t(temp_responses([25, 30])).warnings)           # three points at least
+    two = run_t(temp_responses([20, 30, 30], alpha=1.0))
+    assert any("Only two temperatures" in w for w in two.warnings)
+    narrow = run_t(temp_responses([24, 25, 26], alpha=1.0))
+    assert any("only 2.0 °C" in w for w in narrow.warnings)
+    outside = run_t(temp_responses([30, 35, 40], alpha=1.0))
+    assert any("outside the range measured" in w and "extrapolation" in w for w in outside.warnings)
+    flat = run_t(temp_responses([15, 20, 25, 30, 35], alpha=0.0, noise=1.5, seed=2))
+    assert any("not clearly different from zero" in w for w in flat.warnings)
+    zero_ref = run_t(temp_responses([15, 25, 35], alpha=2.0, y25=0.0))
+    assert not zero_ref.ok and any("zero" in w and "undefined" in w for w in zero_ref.warnings)
+    assert any("several electrodes" in w for w in run_t(temp_responses([15, 25, 35], group="E1") + [
+        type(r)(**{**r.__dict__, "id": r.id + "b", "group": "E2"}) for r in temp_responses([15, 25, 35], group="E2")]).warnings)
+
+
+def test_temperature_survives_saving_and_old_projects_load_without_it(tmp_path):
+    import json
+    import zipfile
+    from echem_analyzer.project import ProjectData, load_project, save_project
+    rs = temp_responses([15, 25, 35])
+    save_project(tmp_path / "p.echemproj", ProjectData(responses=rs))
+    back = load_project(tmp_path / "p.echemproj")
+    assert [r.temp_c for r in back.responses] == [15.0, 25.0, 35.0]
+    old = tmp_path / "old.echemproj"                                                   # a project written before the field existed
+    with zipfile.ZipFile(tmp_path / "p.echemproj") as zin, zipfile.ZipFile(old, "w") as zout:
+        for item in zin.namelist():
+            data = zin.read(item)
+            if item.endswith("project.json") or item == "project.json":
+                doc = json.loads(data)
+                for r in doc.get("responses", []):
+                    r.pop("temp_c", None)
+                data = json.dumps(doc).encode()
+            zout.writestr(item, data)
+    assert [r.temp_c for r in load_project(old).responses] == [None, None, None]
