@@ -8,7 +8,32 @@ What Echem Analyzer reads and how the numbers are computed. Each method is also 
 |---|---|
 | `.csv` | PSTrace export (UTF‑16). Every CA and CV curve in the file. **No scan rate** in CV exports. |
 | `.pssession` | PSTrace session. Holds **every** measurement, including runs never exported to CSV, plus the method settings (scan rate, vertices, step). |
+| `.dta` *(preview)* | Gamry Framework. `CURVEn` tables are CV cycles; `ZCURVE` is impedance; `OCVCURVE` is open-circuit potential. The `TAG` line names the technique. |
+| `.txt` *(preview)* | CH Instruments export (a date line, the technique, `Key = value` parameters, a `Potential/V, Current/A` line, rows), or an Autolab Nova export (one header line of column names). Told apart by their first lines. |
+| `.mpt` *(preview)* | BioLogic EC-Lab ASCII export. The technique is taken from EC-Lab's own name for it; CV cycles from the `cycle number` column. |
 | `.echemproj` | A project saved by this app. |
+
+Every reader converts to the same units: current in µA, potential in V, time in s, impedance in Ω, with Im(Z) negative for a capacitive
+spectrum. A file is recognised by what it contains, so a `.txt` from one instrument is not mistaken for another's. A CV that an instrument
+wrote as one long trace is cut into scans at the reversal points of the potential. When a CV file does not state its scan rate, the median
+|dE/dt| of its time and potential columns is used and the curve is marked as estimated. The four readers marked *preview* were written from the
+manufacturers' file descriptions and tested on synthetic files only.
+
+## Import checks
+
+Every curve is checked when it is loaded (`echem_analyzer/dataqc.py`), and findings appear in the Measurements table and the report. They are
+cautious heuristics that say *look at this*, never *this is wrong*:
+
+* **Missing values, time order, flat line, too few points.** Time must increase strictly; a potential axis is exempt.
+* **Clipped current.** The largest or smallest value repeated in a row for at least 8 points and 2 % of the trace. Currents only.
+* **Spikes.** A point farther than 8 robust standard deviations (1.4826 × the median residual of the points that move) and 2 % of the range
+  from the running median of 7 points. A step is followed by the median, so it is not a spike. The last point is compared with the line through
+  the five before it (a running median cannot judge the last point; PalmSens often records a wrong one). The first point is not tested: a
+  transient starts steeper than any line through what follows it.
+* **Unsettled open-circuit potential.** Slope of the last fifth of the run above 1 mV/min, for runs of at least 20 s.
+* **Implausible units.** Potentials beyond ±3 V, currents beyond 100 mA.
+* **Impedance.** Frequencies must be positive and finite; five or more are needed for a fit.
+* **Duplicates.** Curves of equal length and technique whose numbers agree to a relative 10⁻⁷ are reported on the later copy.
 
 ## CA standard addition
 

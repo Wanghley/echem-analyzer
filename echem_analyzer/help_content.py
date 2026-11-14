@@ -8,6 +8,8 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
+from . import dataqc
+
 
 @dataclass(frozen=True)
 class Topic:
@@ -90,6 +92,32 @@ result by hand.</p>
 <p>The readers marked <b>preview</b> (Gamry, CH Instruments, BioLogic, Autolab) were written from the manufacturers' file
 descriptions and checked only on synthetic files. Open the first real file of each kind next to the instrument's own software and
 compare a curve; a CV whose scan rate the file does not state gets one estimated from its time and potential columns, and says so.</p>
+"""),
+    Topic("checks", "Getting started", "Import checks", f"""
+<h2>Import checks</h2>
+<p>Every curve is looked over when it is loaded, before any number is computed from it. The <b>Checks</b> column of
+<b>Measurements</b> says <i>OK</i> or how many errors and warnings a curve has; hover it, or select the curve, to read them. The same
+findings are listed in the report's Overview. A finding means <i>look at this</i>, never <i>this is wrong</i>: the thresholds are
+deliberately cautious, and nothing is removed or changed for you.</p>
+""" + _table([
+        ("Points that are not numbers", "Missing values in the file. An <b>error</b> when more than half of the trace is missing."),
+        ("Time runs backwards or repeats", "<b>Error</b>: step times, rates and drift cannot be trusted. Not applied to a potential axis, which turns by design."),
+        ("Current stuck at one value", f"The largest or smallest value repeated in a row (at least {dataqc.SATURATION_MIN_RUN} points and "
+                                       f"{100 * dataqc.SATURATION_MIN_FRACTION:g} % of the trace): the current range was probably too small. Currents only."),
+        ("Isolated spike", f"A point more than {dataqc.SPIKE_SIGMAS:g} robust standard deviations and {100 * dataqc.SPIKE_MIN_FRACTION:g} % of the "
+                           "range away from its neighbours. A step, a trend and the steep start of a transient are not spikes. The last point is "
+                           "judged against the line through the five before it, because PalmSens often records a wrong last point."),
+        ("Flat line, too few points", f"No change at all, or fewer than {dataqc.MIN_POINTS} usable points."),
+        ("Potential not settled", f"An open-circuit potential still moving by more than {dataqc.DRIFT_LIMIT_MV_PER_MIN:g} mV/min over its last fifth "
+                                  f"(runs of at least {dataqc.DRIFT_MIN_SECONDS:g} s): the reading depends on when you stop."),
+        ("Implausible units", f"Potentials beyond ±{dataqc.POTENTIAL_LIMIT_V:g} V, or currents beyond {dataqc.CURRENT_LIMIT_UA / 1e3:g} mA: millivolts "
+                              "read as volts, or nanoamps as microamps."),
+        ("Impedance", "Zero or negative frequencies, missing values, or fewer than five frequencies."),
+        ("Same data twice", "A curve whose numbers match an earlier one (to seven digits): loaded twice, or one run saved under two names."),
+    ], ("Check", "What it looks for")) + """
+<p>The checks run again when you change a measurement's technique, because some depend on it (the potential check applies to open-circuit
+potential only). They were tuned on synthetic data with known faults; if a real run is flagged for no good reason, or a fault goes
+unflagged, that is worth knowing.</p>
 """),
     Topic("techniques", "Analyses", "Techniques and what is measured", """
 <h2>Techniques and what is measured</h2>

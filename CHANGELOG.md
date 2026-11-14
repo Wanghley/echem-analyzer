@@ -10,6 +10,10 @@ uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`, tagged `vM
   CV (one curve per cycle), LSV, DPV, SWV, chronoamperometry, open-circuit potential and impedance, in the app's units. A file is
   recognised by what it contains, so a `.txt` from one instrument is not mistaken for another's. **These four readers are preview:** they
   were written from the manufacturers' file descriptions and tested on synthetic files only.
+- **Import checks.** Every curve is looked over when it is loaded: points that are not numbers, time that runs backwards, a current stuck at the
+  instrument's limit, isolated spikes (including PalmSens' wrong last point), a flat line, an open-circuit potential that has not settled, units that
+  cannot be right, impossible impedance frequencies, and the same run loaded twice. A **Checks** column in *Measurements* shows the result (hover or
+  select a curve for the details) and the report's Overview lists the findings. They are cautious and only ever say *look at this*.
 - A file that has no reader but is a table of numbers (including `.xlsx`) opens the import dialog when dropped or opened, instead of being rejected.
 - A CV file that does not state its scan rate gets one estimated from its time and potential columns, and says so.
 

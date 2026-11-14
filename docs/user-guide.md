@@ -17,6 +17,12 @@ no reader recognises opens the import dialog when you drop it on the window. CV 
 into scans at their reversal points; when a file does not state the scan rate, one is estimated from the time and potential
 columns and marked as estimated.
 
+**Import checks.** Each curve is looked over when it is loaded. The **Checks** column of *Measurements* says *OK* or how many errors
+and warnings it has (hover for the details; select the curve to read them beside the preview), and the report's Overview lists them.
+They flag points that are not numbers, time that runs backwards, a current stuck at the instrument's limit, isolated spikes, a flat line,
+an open-circuit potential that has not settled, units that cannot be right, impossible impedance frequencies and the same run loaded twice.
+They say *look at this*; nothing is changed or removed for you.
+
 **Not verified on real files:** the DPV/SWV/LSV/EIS/OCP/CC parsers and PalmSens method ids were built from the format and
 tested on synthetic data with known answers only; the EIS layout of `.pssession` is a best guess. The Gamry, CH Instruments,
 BioLogic and Autolab readers are **preview**: written from the manufacturers' file descriptions and tested on synthetic files.
