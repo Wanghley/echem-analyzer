@@ -113,6 +113,37 @@ def _readers_and_checks(ctx):
     return f"{len(loaded)} instrument layouts read; the checks found the injected spike in each"
 
 
+@step("compare variants, write a datasheet and a data package")
+def _prototypes(ctx):
+    from . import acceptance, cli, datasheet, devices, package, readers, variants
+    from .models import ProjectData, ProjectMeta, Response
+    from .report_pdf import write_pdf
+    rs, devs = [], {}
+    for variant, sens, ids in (("thin", 0.5, ("T1", "T2", "T3")), ("thick", 1.0, ("K1", "K2", "K3"))):
+        for k, dev in enumerate(ids):
+            devs[dev] = devices.Device(dev, variant, "L1", params={"ink volume (µL)": 2.0 if variant == "thin" else 5.0 + 0.1 * k})
+            for c in (1, 2, 5, 10, 20):
+                rs.append(Response(id=f"{dev}|{c}", group=dev, quantity="Peak", unit="µA", value=0.2 + sens * (1 + 0.05 * (k - 1)) * c,
+                                   conc=float(c), conc_unit="µM", role="standard"))
+    data = ProjectData(meta=ProjectMeta(name="Self-test"), responses=rs)
+    devices.save(data.extras, devs)
+    acceptance.save(data.extras, [acceptance.Rule("Peak", minimum=3.0)])
+    cmp_ = variants.compare_variants(rs, devs, "Peak", rules=acceptance.load(data.extras))
+    assert [r.variant for r in cmp_.rows] == ["thick", "thin"] and cmp_.rows[0].sens_mean > cmp_.rows[1].sens_mean
+    trend = variants.trend(cmp_, devs, "ink volume (µL)")
+    assert trend.ok and trend.slope > 0
+    tmp = Path(ctx["tmp"])
+    pages = write_pdf(datasheet.build(data, "Peak"), tmp / "datasheet.pdf")
+    info = package.build_package(data, tmp / "package.zip")
+    assert pages == 2 and info["responses"] == len(rs), f"datasheet of 2 variants is {pages} pages; package holds {info['responses']} of {len(rs)} responses"
+    csv_path = tmp / "instrument.csv"
+    t = np.linspace(0, 10, 51)
+    csv_path.write_bytes(("Date and time:,2026-11-03\r\nNotes:\r\n,\r\nCA: i vs t,\r\nDate and time measurement:,2026-11-03\r\ns,µA\r\n"
+                          + "".join(f"{a},{1 + 0.01 * a}\r\n" for a in t)).encode("utf-16"))
+    assert readers.pick(csv_path) is not None and cli.run(["qc", str(csv_path)]) == 0
+    return f"{len(cmp_.rows)} variants compared, datasheet {pages} pages, package with {info['curves']} curves, command line ran"
+
+
 @step("analyse, calibrate, report")
 def _analysis(ctx):
     from .report import build_report
