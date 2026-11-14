@@ -12,7 +12,7 @@ from PySide6.QtWidgets import (
     QPushButton, QStackedWidget, QTabWidget, QToolBar, QToolButton, QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget,
 )
 
-from .. import about, readers, theme
+from .. import about, importers, readers, theme
 from ..models import KIND_CA, KIND_CV
 from ..prefs import prefs
 from ..project import SUFFIX, ProjectError, collect_results, load_project
@@ -644,7 +644,7 @@ class MainWindow(QMainWindow):
             QMessageBox.information(self, "Export all results", f"Wrote {len(written)} file(s) to\n{d}")
 
     # ================================================================== import / routing
-    TABLE_FILTER = "Tables (*.csv *.txt *.tsv *.dat *.xlsx *.xlsm);;All files (*)"
+    TABLE_FILTER = f"Tables ({' '.join('*' + s for s in importers.TABLE_SUFFIXES)});;All files (*)"
 
     def import_table_dialog(self) -> None:
         path, _ = QFileDialog.getOpenFileName(self, "Import a table", self._last_dir(), self.TABLE_FILTER)
@@ -695,8 +695,11 @@ class MainWindow(QMainWindow):
             return
         if not data_paths:
             return
-        loaded, errors = self.session.add_paths(data_paths)
-        first = data_paths[0]
+        # a plain table from some other program (no reader recognises it) goes to the Import table dialog
+        tables = [p for p in data_paths if p.is_file() and readers.pick(p) is None and importers.is_table(p)]
+        data_paths = [p for p in data_paths if p not in tables]
+        loaded, errors = self.session.add_paths(data_paths) if data_paths else ([], [])
+        first = (data_paths or tables)[0]
         self.session.qs.setValue("lastDir", str(first if first.is_dir() else first.parent))
         if loaded:
             n_ca = sum(len(f.of_kind(KIND_CA)) for f in loaded)
@@ -711,6 +714,8 @@ class MainWindow(QMainWindow):
                 self.tabs.setCurrentWidget(self.measurements_tab)
         if errors:
             QMessageBox.warning(self, "Some files could not be loaded", "\n".join(errors))
+        for table in tables:
+            self.import_table_from(table)
 
     # ================================================================== file tree
     def _rebuild_file_tree(self) -> None:

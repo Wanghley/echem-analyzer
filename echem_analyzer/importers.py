@@ -81,6 +81,21 @@ def _sniff_delimiter(lines: list[str]) -> str:
     return best
 
 
+TABLE_SUFFIXES = (".csv", ".txt", ".tsv", ".dat", ".xlsx", ".xlsm")
+
+
+def is_table(path: str | Path) -> bool:
+    """True when the file is a plain table of numbers (two columns, two rows at least) the Import table dialog can read."""
+    path = Path(path)
+    if path.suffix.lower() not in TABLE_SUFFIXES:
+        return False
+    try:
+        table = read_table(path)
+    except Exception:  # noqa: BLE001 - unreadable, empty or not a spreadsheet: it is just not a table
+        return False
+    return table.n_rows >= 2 and len(table.columns) >= 2
+
+
 def read_rows(path: Path) -> list[list[str]]:
     """Rows of cells from a text table or the first sheet of an .xlsx file."""
     if path.suffix.lower() in (".xlsx", ".xlsm"):

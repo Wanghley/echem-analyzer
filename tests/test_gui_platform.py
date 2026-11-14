@@ -206,6 +206,53 @@ def test_importing_an_arbitrary_table(qapp, tmp_path, monkeypatch):
     assert win.analysis_tab.result.ok
 
 
+def _table_file(path):
+    e, i = synth.dpv_trace(7.0)
+    path.write_text("Potential (mV)\tCurrent (nA)\n" + "\n".join(f"{a * 1000:.3f}\t{b * 1000:.3f}" for a, b in zip(e, i)), encoding="utf-8")
+    return path
+
+
+def test_a_table_no_reader_recognises_opens_the_import_dialog_instead_of_being_rejected(qapp, tmp_path, monkeypatch):
+    win = make_window(tmp_path / "w")
+    f = _table_file(tmp_path / "other_program.txt")
+    seen = []
+
+    def accept_as_dpv(self):
+        seen.append(self.path.name)
+        self.tech.setCurrentIndex(self.tech.findData("DPV"))
+        self._accept()
+        return self.curve is not None
+
+    monkeypatch.setattr(ImportDialog, "exec", accept_as_dpv)
+    monkeypatch.setattr(mw.QMessageBox, "warning", lambda *a: pytest.fail("a plain table is not an error"))
+    win.load_paths([f])
+    assert seen == ["other_program.txt"] and [c.kind for c in win.session.all_curves()] == ["DPV"]
+
+
+def test_a_dropped_file_that_is_neither_instrument_data_nor_a_table_is_reported(qapp, tmp_path, monkeypatch):
+    win = make_window(tmp_path / "w")
+    words = tmp_path / "words.txt"
+    words.write_text("nothing numeric in here\nat all", encoding="utf-8")
+    shown = []
+    monkeypatch.setattr(mw.QMessageBox, "warning", lambda parent, title, text: shown.append(text))
+    monkeypatch.setattr(ImportDialog, "exec", lambda self: pytest.fail("no table to import"))
+    win.load_paths([words])
+    assert shown and "words.txt" in shown[0] and not win.session.all_curves()
+
+
+def test_an_instrument_file_dropped_on_the_window_is_read_not_imported(qapp, tmp_path, monkeypatch):
+    win = make_window(tmp_path / "w")
+    monkeypatch.setattr(ImportDialog, "exec", lambda self: pytest.fail("a Gamry file needs no column mapping"))
+    e, i = synth.cv_scan(1.0, 3.0)
+    rows = [(k, 0.05 * k, float(e[k]), float(i[k] * 1e-6)) for k in range(e.size)]
+    synth.write_gamry_dta(tmp_path / "cv.DTA", "CV", "Cyclic Voltammetry", {"SCANRATE": (100.0, "Scan Rate (mV/s)")},
+                          [("CURVE1", ["Pt", "T", "Vf", "Im"], ["#", "s", "V", "A"], rows)])
+    win.load_paths([tmp_path / "cv.DTA"])
+    (run,) = win.session.cv_runs()
+    assert run.scan_rate == pytest.approx(0.1) and run.cycle_numbers == [1]
+    assert win.tabs.currentWidget() is win.measurements_tab
+
+
 def test_import_dialog_reports_problems_instead_of_crashing(qapp, tmp_path):
     bad = tmp_path / "words.txt"
     bad.write_text("nothing numeric in here\nat all", encoding="utf-8")

@@ -72,6 +72,21 @@ def test_delimiters_headers_and_units(tmp_path, sep):
     assert t.data[3, 0] == pytest.approx(0.3) and t.data[7, 1] == pytest.approx(14.0)
 
 
+def test_is_table_tells_a_table_of_numbers_from_other_files(tmp_path):
+    good = write(tmp_path / "t.txt", "E (V)\ti (µA)\n0.1\t1\n0.2\t2\n0.3\t3\n")
+    assert importers.is_table(good)
+    assert not importers.is_table(write(tmp_path / "words.txt", "nothing numeric in here\nat all"))
+    assert not importers.is_table(write(tmp_path / "one.txt", "E (V)\n0.1\n0.2\n0.3\n"))               # a single column
+    assert not importers.is_table(write(tmp_path / "t.docx", "E (V)\ti (µA)\n0.1\t1\n0.2\t2\n"))       # not a table suffix
+    assert not importers.is_table(tmp_path / "missing.txt")
+    wb = openpyxl.Workbook()
+    wb.active.append(["E (V)", "i (µA)"])
+    for k in range(4):
+        wb.active.append([0.1 * k, 2.0 * k])
+    wb.save(tmp_path / "t.xlsx")
+    assert importers.is_table(tmp_path / "t.xlsx")
+
+
 def test_comments_before_the_header_and_slash_units(tmp_path):
     text = "# Gamry export\n# date 2026-11-03\nt/s\tE/mV\n" + "\n".join(f"{k}\t{100 + k}" for k in range(10))
     t = importers.read_table(write(tmp_path / "b.txt", text))
