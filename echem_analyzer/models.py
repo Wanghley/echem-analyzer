@@ -42,7 +42,7 @@ class Curve:
 @dataclass
 class DataFile:
     path: Path
-    fmt: str                       # "csv" | "pssession"
+    fmt: str                       # the reader that produced it: "csv" | "pssession" | "gamry" | ... (see readers)
     curves: list[Curve] = field(default_factory=list)
     exported_at: str = ""
 

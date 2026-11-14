@@ -1,4 +1,4 @@
-"""Readers for PalmSens PSTrace exports (``.csv`` and ``.pssession``)."""
+"""Readers for PalmSens PSTrace exports (``.csv`` and ``.pssession``), and the entry points for every reader."""
 from __future__ import annotations
 
 import csv
@@ -258,23 +258,22 @@ def load_pssession(path: str | Path) -> DataFile:
 
 
 # --------------------------------------------------------------------------- dispatcher
+# The readers live in ``echem_analyzer.readers`` (one module per vendor) and build on this module, so they are imported
+# late.  These three names stay here because the rest of the program and older scripts use them.
 
-SUPPORTED_SUFFIXES = (".csv", ".pssession")
+def __getattr__(name: str):
+    if name == "SUPPORTED_SUFFIXES":              # derived from the registry: it grows with every reader
+        from . import readers
+        return readers.suffixes()
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 def load_any(path: str | Path) -> DataFile:
-    path = Path(path)
-    suffix = path.suffix.lower()
-    if suffix == ".csv":
-        return load_csv(path)
-    if suffix == ".pssession":
-        return load_pssession(path)
-    raise ValueError(f"Unsupported file type: {path.name}")
+    """Load a file with whichever reader recognises it (:class:`~echem_analyzer.readers.UnsupportedFile` if none does)."""
+    from . import readers
+    return readers.load(path)
 
 
 def find_data_files(folder: str | Path) -> list[Path]:
-    folder = Path(folder)
-    return sorted(
-        p for p in folder.iterdir()
-        if p.is_file() and p.suffix.lower() in SUPPORTED_SUFFIXES and not p.name.startswith(("~$", "."))
-    )
+    from . import readers
+    return readers.find_files(folder)

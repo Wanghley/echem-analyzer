@@ -6,7 +6,7 @@ from typing import Iterable, Optional
 
 from PySide6.QtCore import QObject, QSettings, Signal
 
-from .. import __version__, io_palmsens
+from .. import __version__, io_palmsens, readers
 from ..ca_analysis import detect_step_events, sync_step_lists
 from ..cv_analysis import CVRun, group_cv_runs
 from ..analyzers import ANALYZERS, ResponseSpec, upsert_responses
@@ -58,14 +58,14 @@ class Session(QObject):
         todo: list[Path] = []
         for p in map(Path, paths):
             if p.is_dir():
-                todo += io_palmsens.find_data_files(p)
-            elif p.suffix.lower() in io_palmsens.SUPPORTED_SUFFIXES:
+                todo += readers.find_files(p)
+            elif p.suffix.lower() in readers.suffixes():
                 todo.append(p)
             else:
                 errors.append(f"{p.name}: unsupported file type")
         for p in todo:
             try:
-                f = io_palmsens.load_any(p)
+                f = readers.load(p)
             except Exception as exc:  # noqa: BLE001 - report any parse problem to the user
                 errors.append(f"{p.name}: {exc}")
                 continue

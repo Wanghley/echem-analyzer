@@ -12,7 +12,7 @@ from PySide6.QtWidgets import (
     QPushButton, QStackedWidget, QTabWidget, QToolBar, QToolButton, QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget,
 )
 
-from .. import about, theme
+from .. import about, readers, theme
 from ..models import KIND_CA, KIND_CV
 from ..prefs import prefs
 from ..project import SUFFIX, ProjectError, collect_results, load_project
@@ -37,7 +37,6 @@ from .support import SupportCard, coffee_button, open_link
 from .update_manager import UpdateManager
 from .welcome import WelcomePage
 
-FILTER = "PalmSens exports (*.csv *.pssession);;All files (*)"
 PROJECT_FILTER = f"Echem Analyzer project (*{SUFFIX});;All files (*)"
 
 SAVE, DISCARD, CANCEL = "save", "discard", "cancel"
@@ -678,12 +677,12 @@ class MainWindow(QMainWindow):
         return str(self.session.qs.value("lastDir", str(Path.home())))
 
     def open_files(self) -> None:
-        paths, _ = QFileDialog.getOpenFileNames(self, "Add PalmSens files", self._last_dir(), FILTER)
+        paths, _ = QFileDialog.getOpenFileNames(self, "Add data files", self._last_dir(), readers.file_filter())
         if paths:
             self.load_paths(paths)
 
     def open_folder(self) -> None:
-        d = QFileDialog.getExistingDirectory(self, "Add folder with PalmSens exports", self._last_dir())
+        d = QFileDialog.getExistingDirectory(self, "Add folder with instrument files", self._last_dir())
         if d:
             self.load_paths([d])
 
