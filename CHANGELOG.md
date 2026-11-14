@@ -5,6 +5,11 @@ uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`, tagged `vM
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-11-14
+
+Tools for the bench, for sensor design and for building prototypes: more instruments, checks on every file, calculators, electrode and wearable
+analyses, prototype tracking with datasheets, and a command line.
+
 ### Added
 - **More instruments.** Gamry `.DTA`, CH Instruments `.txt`, BioLogic EC-Lab `.mpt` and Autolab Nova exports are read next to PalmSens files:
   CV (one curve per cycle), LSV, DPV, SWV, chronoamperometry, open-circuit potential and impedance, in the app's units. A file is
@@ -151,7 +156,8 @@ First tagged release: the platform for sensor electrochemistry beyond standard a
 - 0.2: multi-cycle CV analysis, saveable projects and named presets.
 - 0.1: chronoamperometry standard addition with LOD and LOQ, and comparison of runs.
 
-[Unreleased]: https://github.com/Wanghley/echem-analyzer/compare/v0.5.2...HEAD
+[Unreleased]: https://github.com/Wanghley/echem-analyzer/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/Wanghley/echem-analyzer/releases/tag/v0.6.0
 [0.5.2]: https://github.com/Wanghley/echem-analyzer/releases/tag/v0.5.2
 [0.5.1]: https://github.com/Wanghley/echem-analyzer/releases/tag/v0.5.1
 [0.5.0]: https://github.com/Wanghley/echem-analyzer/releases/tag/v0.5.0
