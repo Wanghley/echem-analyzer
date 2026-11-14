@@ -167,3 +167,64 @@ def test_gamry_decimal_commas_and_unknown_tables(tmp_path):
 def test_a_dta_that_is_not_a_gamry_file_is_not_claimed(tmp_path):
     (tmp_path / "x.dta").write_text("just some text\n1 2 3\n", encoding="utf-8")
     assert readers.pick(tmp_path / "x.dta") is None
+
+
+# ===================================================================== CH Instruments .txt
+
+def test_chi_cv_is_cut_into_scans_at_the_reversal_points(tmp_path):
+    e1, i1 = synth.cv_scan(1.0, 3.0)
+    e, i_ua = np.r_[e1, e1], np.r_[i1, i1]
+    synth.write_chi_txt(tmp_path / "cv.txt", "Cyclic Voltammetry", ["Potential/V", "Current/A"],
+                        list(zip(e, i_ua * 1e-6)),
+                        {"Init E (V)": -0.2, "High E (V)": 0.6, "Low E (V)": -0.2, "Init P/N": "P",
+                         "Scan Rate (V/s)": 0.1, "Segment": 4, "Sample Interval (V)": 0.005})
+    assert readers.pick(tmp_path / "cv.txt").key == "chi"
+    f = readers.load(tmp_path / "cv.txt")
+    assert f.fmt == "chi" and [c.scan for c in f.curves] == [1, 2] and {c.kind for c in f.curves} == {"CV"}
+    c = f.curves[0]
+    assert abs(c.n - e1.size) <= 1 and np.allclose(c.x[:e1.size], e1) and np.allclose(c.y[:e1.size], i1, rtol=1e-5, atol=1e-6)
+    assert (c.x_unit, c.y_unit) == ("V", "µA") and c.meta["scan_rate"] == 0.1
+    assert (c.meta["e_begin"], c.meta["e_vtx1"], c.meta["e_vtx2"], c.meta["e_step"]) == (-0.2, 0.6, -0.2, 0.005)
+    assert c.meta["run_title"] == "Cyclic Voltammetry" and c.meta["device"] == "CHI660E"
+
+
+def test_chi_a_single_cv_sweep_pair_is_scan_one_and_a_negative_start_swaps_the_vertices(tmp_path):
+    e, i = synth.cv_scan(1.0, 3.0)
+    synth.write_chi_txt(tmp_path / "cv.txt", "Cyclic Voltammetry", ["Potential/V", "Current/A"], list(zip(e, i * 1e-6)),
+                        {"High E (V)": 0.6, "Low E (V)": -0.2, "Init P/N": "N", "Scan Rate (mV/s)": 100})
+    f = readers.load(tmp_path / "cv.txt")
+    assert [c.scan for c in f.curves] == [1]
+    assert (f.curves[0].meta["e_vtx1"], f.curves[0].meta["e_vtx2"]) == (-0.2, 0.6) and f.curves[0].meta["scan_rate"] == pytest.approx(0.1)
+
+
+def test_chi_amperometry_potentiometry_and_pulse_techniques(tmp_path):
+    t = np.linspace(0, 30, 61)
+    i = 1.5e-6 + 2e-7 * (t > 15)
+    synth.write_chi_txt(tmp_path / "ca.txt", "Amperometric i-t Curve", ["Time/sec", "Current/A"], list(zip(t, i)), {"Init E (V)": 0.4})
+    ca = readers.load(tmp_path / "ca.txt").curves[0]
+    assert ca.kind == "CA" and np.allclose(ca.y, i * 1e6) and ca.meta["E"] == 0.4 and ca.meta["dt"] == pytest.approx(0.5)
+
+    v = 0.12 + 1e-3 * np.exp(-t / 5)
+    synth.write_chi_txt(tmp_path / "ocp.txt", "Open Circuit Potential - Time", ["Time/sec", "Potential/V"], list(zip(t, v)))
+    ocp = readers.load(tmp_path / "ocp.txt").curves[0]
+    assert ocp.kind == "OCP" and np.allclose(ocp.y, v) and ocp.y_unit == "V"
+
+    e, ip = synth.dpv_trace(5.0)
+    synth.write_chi_txt(tmp_path / "dpv.txt", "Differential Pulse Voltammetry", ["Potential/V", "Current/A"], list(zip(e, ip * 1e-6)))
+    dpv = readers.load(tmp_path / "dpv.txt").curves[0]
+    assert dpv.kind == "DPV" and np.allclose(dpv.x, e) and np.allclose(dpv.y, ip, rtol=1e-5, atol=1e-6)
+
+
+@pytest.mark.parametrize("sign", [1, -1])
+def test_chi_impedance_is_oriented_whatever_the_sign_of_z_imag(tmp_path, sign):
+    f_hz, z = synth.randles_spectrum()
+    synth.write_chi_txt(tmp_path / "eis.txt", "A.C. Impedance", ["Freq/Hz", "Z'/ohm", "Z\"/ohm", "Z/ohm", "Phase/deg"],
+                        [(f, zz.real, sign * -zz.imag, abs(zz), 0.0) for f, zz in zip(f_hz, z)])
+    c = readers.load(tmp_path / "eis.txt").curves[0]
+    assert c.kind == "EIS" and np.allclose(c.extra["freq"], f_hz) and (c.extra["zim"] < 0).all()
+    assert np.allclose(c.extra["zre"], z.real, rtol=1e-5)
+
+
+def test_chi_a_text_table_without_the_instrument_lines_is_not_claimed(tmp_path):
+    (tmp_path / "plain.txt").write_text("Potential/V, Current/A\n\n0.1, 1e-6\n0.2, 2e-6\n", encoding="utf-8")
+    assert readers.pick(tmp_path / "plain.txt") is None                       # a plain table belongs to the Import table

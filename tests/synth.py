@@ -1,5 +1,6 @@
 """Synthetic measurement files in the PalmSens layouts (for techniques without real example files)."""
 import json
+import re
 from pathlib import Path
 
 import numpy as np
@@ -88,4 +89,20 @@ def write_gamry_dta(path: Path, tag: str, title: str, quants: dict | None = None
     for name, cols, units, rows in tables:
         lines += [f"{name}\tTABLE\t{len(rows)}\tCurve", "\t" + "\t".join(cols), "\t" + "\t".join(units)]
         lines += ["\t" + "\t".join(num(v) for v in r) for r in rows]
+    path.write_bytes(("\r\n".join(lines) + "\r\n").encode("latin-1"))
+
+
+def _chi_num(v) -> str:
+    """CHI (Windows) writes three-digit exponents: 1.234e-007."""
+    return re.sub(r"e([+-])(\d\d)$", r"e\g<1>0\2", f"{v:.6e}")
+
+
+def write_chi_txt(path: Path, technique: str, columns: list[str], rows, params: dict | None = None,
+                  model: str = "CHI660E") -> None:
+    """A CH Instruments text export: date, technique, parameters, a column line, then comma-separated rows."""
+    lines = ["Nov. 5, 2026   10:30:11", technique, "File: C:\\data\\test", "Data Source:  Experiment",
+             f"Instrument Model:  {model}", "Header:  ", "Note:  ", ""]
+    lines += [f"{k} = {v}" for k, v in (params or {}).items()]
+    lines += ["", ", ".join(columns), ""]
+    lines += [", ".join(_chi_num(v) for v in r) for r in rows]
     path.write_bytes(("\r\n".join(lines) + "\r\n").encode("latin-1"))

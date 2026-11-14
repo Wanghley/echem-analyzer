@@ -102,4 +102,4 @@ register(Reader("pssession", "PalmSens PSTrace session", (".pssession",), lambda
 
 # --------------------------------------------------------------------------- other instruments
 # Each module registers its own reader when imported (they need Reader and register, defined above).
-from . import gamry  # noqa: E402,F401
+from . import chi, gamry  # noqa: E402,F401
