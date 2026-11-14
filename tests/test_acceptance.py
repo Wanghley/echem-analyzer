@@ -139,3 +139,25 @@ def test_a_named_set_of_rules_is_kept_in_the_shared_preset_file(tmp_path):
     old = tmp_path / "old.json"                                                              # a file from before QC sets existed
     old.write_text('{"version": 1, "ca": {}, "cv": {}}', encoding="utf-8")
     assert PresetStore(old).names(KIND_QC) == [] and not PresetStore(old).last_error
+
+
+# ===================================================================== the CV analysis that feeds the rules
+
+def test_the_redox_couple_analysis_sends_what_the_template_tests():
+    import synth
+    from echem_analyzer import analyzers
+    from echem_analyzer.models import Curve
+    e, i = synth.cv_scan(1.0, 3.0, e0=0.2, sep=0.07)
+    c = Curve(kind="CV", title="CV Scan 1", x=e, y=i, x_unit="V", y_unit="µA", scan=1, uid="u")
+    a = analyzers.ANALYZERS["cv_couple"]
+    r = a.run(c, a.defaults())
+    assert r.ok and [s.quantity for s in r.responses] == ["ΔEp", "ip ratio", "E½", "Anodic peak current", "Cathodic peak current"]
+    got = {s.quantity: s.value for s in r.responses}
+    assert got["ΔEp"] == pytest.approx(70.0, abs=6.0) and got["ip ratio"] == pytest.approx(1.0, abs=0.05) and got["E½"] == pytest.approx(0.2, abs=0.01)
+    assert {s.quantity: s.unit for s in r.responses}["ΔEp"] == "mV" and r.metrics[0].tone == "success"
+    template = acc.TEMPLATES["Ferri/ferrocyanide screen (CV)"]
+    rs = [Response(id=f"r{k}", group="E1", quantity=s.quantity, unit=s.unit, value=s.value) for k, s in enumerate(r.responses)]
+    assert acc.evaluate(rs, template)[0].status == "pass"                                   # a good electrode passes the screen it feeds
+    one_way = a.run(Curve(kind="CV", title="up", x=e[:160], y=i[:160], x_unit="V", y_unit="µA", scan=1, uid="v"), a.defaults())
+    assert not one_way.ok and "anodic and a cathodic" in one_way.warnings[0]
+    assert analyzers.default_analyzer("CV").key == "peak" and "cv_couple" in [x.key for x in analyzers.for_kind("CV")]

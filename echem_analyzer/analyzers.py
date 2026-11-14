@@ -16,10 +16,11 @@ from . import electrode, peaks, techniques, transients
 from . import eis as eis_engine
 from .ca_analysis import analyze_ca, detect_step_events
 from .calibration import fit_linear
+from .cv_analysis import analyze_cycle
 from .io_palmsens import parse_stock_from_title
 from .labels import curve_run_label
 from .prefs import prefs
-from .models import CAAnalysisSettings, Curve, Response
+from .models import CAAnalysisSettings, CVSettings, Curve, Response
 from .palette import Palette
 
 NAN = float("nan")
@@ -190,6 +191,62 @@ class PeakAnalyzer(Analyzer):
         axc.set_xlabel("Potential (V)")
         axc.set_ylabel("Corrected")
         axc.set_xlim(ax.get_xlim())
+
+
+# =============================================================================== redox couple
+
+class CVCoupleAnalyzer(Analyzer):
+    key = "cv_couple"
+    title = "Redox couple (ΔEp, peak ratio)"
+    kinds = (techniques.CV,)
+    description = ("Anodic and cathodic peaks of one CV scan: peak separation ΔEp, the ratio of the peak currents, E½. "
+                   "The usual screen of an electrode in a ferri/ferrocyanide solution; send the numbers to the study and give each "
+                   "electrode its name to test them against acceptance criteria.")
+    fields = (
+        Field("use_window", "Restrict the peak search", "bool", False, tip="Search for the peaks only between the two potentials below."),
+        Field("win_lo", "Window from", "float", -0.2, -20, 20, 0.01, 3, "V"),
+        Field("win_hi", "Window to", "float", 0.6, -20, 20, 0.01, 3, "V"),
+        Field("baseline", "Baseline", "choice", "none", tip="A line across each peak's search window; needs a window.",
+              choices=(("None (raw current)", "none"), ("Linear (across the window)", "linear"))),
+    )
+
+    def run(self, curve: Curve, params: dict[str, Any]) -> AnalysisResult:
+        out = AnalysisResult()
+        window = [min(params["win_lo"], params["win_hi"]), max(params["win_lo"], params["win_hi"])] if params["use_window"] else None
+        s = CVSettings(anodic_window=window, cathodic_window=list(window) if window else None, baseline=params["baseline"])
+        r = analyze_cycle(curve.x, curve.y, s)
+        out.data = (curve, s, r)
+        if not (math.isfinite(r.e_pa) and math.isfinite(r.e_pc)):
+            out.warnings.append("Both an anodic and a cathodic peak are needed: the scan must sweep up and back down through the couple.")
+            return out
+        out.ok = True
+        u = curve.y_unit or "µA"
+        dep = r.delta_ep * 1000.0
+        out.metrics = [Metric("ΔEp", g(dep, 4), "mV", "success" if dep <= 80 else ("warning" if dep <= 120 else "danger")),
+                       Metric("ip ratio", g(r.ip_ratio, 3), "ipa / ipc", "success" if 0.9 <= r.ip_ratio <= 1.1 else "warning"),
+                       Metric("E½", g(r.e_half, 4), "V"), Metric("Anodic ip", g(r.i_pa, 4), u)]
+        out.rows = [("Anodic peak", f"{r.e_pa:.4g} V, {g(r.i_pa)}", u), ("Cathodic peak", f"{r.e_pc:.4g} V, {g(r.i_pc)}", u),
+                    ("ΔEp", g(dep), "mV"), ("ip ratio |ipa/ipc|", g(r.ip_ratio, 4), ""), ("E½", g(r.e_half, 4), "V")]
+        out.responses = [ResponseSpec("ΔEp", "mV", dep), ResponseSpec("ip ratio", "", r.ip_ratio), ResponseSpec("E½", "V", r.e_half),
+                         ResponseSpec("Anodic peak current", u, r.i_pa), ResponseSpec("Cathodic peak current", u, r.i_pc)]
+        if dep < 55:
+            out.warnings.append("ΔEp below about 57 mV is not possible for a one-electron couple: the peaks may be badly located or the scan too noisy.")
+        return out
+
+    def draw(self, fig, curve, params, result, p) -> None:
+        fig.clear()
+        if result.data is None or not result.ok:
+            _note(fig, "No complete redox couple found.", p)
+            return
+        _, _, r = result.data
+        ax = fig.add_subplot(111)
+        ax.plot(curve.x, curve.y, color=p.trace, lw=1.3)
+        ax.plot([r.e_pa], [r.i_pa_raw], "^", color=p.cx, ms=9, mec=p.text, zorder=5)
+        ax.plot([r.e_pc], [r.i_pc_raw], "v", color=p.cx, ms=9, mec=p.text, zorder=5)
+        ax.axvline(r.e_half, color=p.extrap, lw=1.0, ls=":")
+        ax.set_xlabel("Potential (V)")
+        ax.set_ylabel(f"Current ({curve.y_unit or 'µA'})")
+        ax.set_title(f"ΔEp {r.delta_ep * 1000:.4g} mV · ip ratio {r.ip_ratio:.3g} · E½ {r.e_half:.4g} V", loc="left", color=p.text)
 
 
 # =============================================================================== impedance
@@ -520,7 +577,8 @@ class CottrellAnalyzer(Analyzer):
         ax2.set_title("Anson plot" if anson else "Cottrell plot", loc="left", color=p.text)
 
 
-ANALYZERS: dict[str, Analyzer] = {a.key: a for a in (PeakAnalyzer(), EISAnalyzer(), StaircaseAnalyzer(), SteadyAnalyzer(), CottrellAnalyzer())}
+ANALYZERS: dict[str, Analyzer] = {a.key: a for a in (PeakAnalyzer(), EISAnalyzer(), StaircaseAnalyzer(), SteadyAnalyzer(), CottrellAnalyzer(),
+                                                     CVCoupleAnalyzer())}      # after the others: the default analysis of a CV is unchanged
 
 
 def for_kind(kind: str) -> list[Analyzer]:
