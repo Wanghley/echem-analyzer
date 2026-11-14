@@ -231,8 +231,10 @@ a blocking layer binds). <b>CPE</b> parameters Q and n (n = 1 is an ideal capaci
 <ul>
 <li><b>Steady state:</b> mean level of a stretch of a trace, its noise about the trend, drift (also in % per minute) and signal-to-noise.
 Drift above 1 % per minute is flagged: the level may not be settled.</li>
-<li><b>Step response (staircase):</b> the level after each step and the <b>response time t<sub>90</sub></b> (10→90 %, measured from the step
-onset). For slow potentiometric responses set <i>Step shape</i> to <i>Allow slow responses</i>; the automatic choice expects abrupt steps for CA.</li>
+<li><b>Step response (staircase):</b> the level after each step and the <b>response times t<sub>90</sub> and t<sub>95</sub></b> (to 90 % and 95 % of the
+change, measured from the step onset; a level counts as reached when a 3-point running median crosses it, so one noisy sample does not). For slow
+potentiometric responses set <i>Step shape</i> to <i>Allow slow responses</i>; the automatic choice expects abrupt steps for CA. See also
+<a href="topic:wearable">Wearable sensing</a> for recovery times and baseline drift.</li>
 <li><b>Nernstian response:</b> E vs log C should have a slope of 59.16/z mV per decade at 25 °C. For an ion-selective electrode switch on
 <b>Ion-selective electrode (potentiometric)</b> in the Calibration panel (below).</li>
 </ul>
@@ -297,6 +299,28 @@ measurement, then untick it in the Responses table if it is wrong.</li>
 </ul>
 <p><b>Pitfalls the app warns about:</b> standards from several electrodes or several times pooled into one line (use the Electrode and Time
 filters), different units, fewer than two concentrations, and log-linear fits that have no single LOD.</p>
+"""),
+    Topic("wearable", "Sensor study", "Wearable sensing: recovery, drift, temperature", """
+<h2>Wearable sensing: recovery, drift and temperature</h2>
+<p>A sensor worn on skin or sitting in a flowing sample is judged on more than its calibration: how fast it answers and returns, how much its
+baseline wanders, and how its response moves with temperature.</p>
+<h3>Response and recovery time</h3>
+<p>The <b>Step responses (additions)</b> analysis reports t<sub>90</sub> and t<sub>95</sub> for every step. By default a jump the other way is treated as an
+artefact and only reported (that is right for additions). If your sensor is washed out, set <i>Steps against the first</i> to <b>Recovery steps</b>: those
+steps are then marked <i>recovery</i> in the table and their times go to the study as <b>Recovery t90</b> and <b>Recovery t95</b>, separate quantities
+from the response times. Nothing is called a recovery unless you ask for it.</p>
+<h3>Baseline drift</h3>
+<p><i>Baseline drift ▸ Remove a straight-line drift</i> fits a straight line to the baseline before the first step (at least 10 s and 10 points) and
+subtracts it from the whole trace, so the plateaus show the change the analyte made. It assumes the drift is linear and carries on at the same rate:
+look at the corrected trace, and do not use it if the baseline settles exponentially. If the baseline is too short it says so and leaves the trace alone.
+The steady-state analysis does not offer this on purpose: it exists to measure drift.</p>
+<h3>Temperature coefficient</h3>
+<p>Measure the same standard at several temperatures and fill the <b>T (°C)</b> column of the Responses table (the <i>Set for selected…</i> dialog fills many
+rows at once). The <b>Temperature</b> tab (the last Study tab) then fits the response as a straight line in T − T<sub>ref</sub>. Its intercept is the response at
+the reference temperature, and the <b>coefficient α</b> is slope ÷ intercept in % per °C, with its uncertainty. Each response divided by 1 + α·(T − T<sub>ref</sub>)
+is what it would have read at the reference temperature; the RSD before and after shows what compensating buys. Choose one concentration, since a
+percentage coefficient only makes sense at one. It warns about pooled concentrations or electrodes, only two temperatures (a line always fits two points),
+a narrow range, a reference outside the range, and a coefficient not clearly different from zero.</p>
 """),
     Topic("repro", "Sensor study", "Reproducibility and stability", """
 <h2>Reproducibility, stability, selectivity and recovery</h2>

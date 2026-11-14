@@ -17,6 +17,11 @@ no reader recognises opens the import dialog when you drop it on the window. CV 
 into scans at their reversal points; when a file does not state the scan rate, one is estimated from the time and potential
 columns and marked as estimated.
 
+**Wearable sensing.** The step-response analysis gives t90 and t95, can treat steps against the first one as *recoveries* (their own times), and can
+remove a straight-line baseline drift. Fill the **T (°C)** column of the Responses table for standards measured at several temperatures and the
+**Temperature** tab (the last Study tab) gives the temperature coefficient in % per °C with its uncertainty, the response at a reference temperature, and
+what compensating for it does to the scatter.
+
 **Ion-selective electrodes.** Tick *Ion-selective electrode (potentiometric)* in the Calibration panel and give the ion's charge, the temperature and
 (optionally) the background ionic strength. The app finds the Nernstian region, reports the slope as a percentage of the theoretical one, the IUPAC
 detection limit, the region's limits and E°, and describes each unknown as below the limit, in the curved foot, inside the region or above it.

@@ -10,6 +10,11 @@ uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`, tagged `vM
   CV (one curve per cycle), LSV, DPV, SWV, chronoamperometry, open-circuit potential and impedance, in the app's units. A file is
   recognised by what it contains, so a `.txt` from one instrument is not mistaken for another's. **These four readers are preview:** they
   were written from the manufacturers' file descriptions and tested on synthetic files only.
+- **Wearable sensing.** Step responses report **t95** next to t90 (a level counts as reached on a 3-point running median, so one noisy sample is not
+  mistaken for the response arriving); a *Steps against the first* setting treats jumps the other way as the sensor **recovering**, with their own
+  times; a *Baseline drift* setting removes a straight-line drift fitted to the baseline. Responses can carry a **temperature** (T (°C) column), and a
+  **Temperature** tab in the Study tab gives the coefficient in % per °C with its uncertainty, the response at a reference temperature and the RSD before
+  and after compensating; the report has the same as a section.
 - **Ion-selective electrodes.** *Ion-selective electrode (potentiometric)* in the Calibration panel finds the Nernstian region (leaving out the curved
   corner), reports the slope as a percentage of 2.303·RT/zF for the ion's charge and temperature, the IUPAC detection limit, the region's limits and E°
   (with Davies activity coefficients when a background ionic strength is given), and describes each unknown as below the limit, in the curved foot or above

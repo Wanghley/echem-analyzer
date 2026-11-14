@@ -19,6 +19,20 @@ wrote as one long trace is cut into scans at the reversal points of the potentia
 |dE/dt| of its time and potential columns is used and the curve is marked as estimated. The four readers marked *preview* were written from the
 manufacturers' file descriptions and tested on synthetic files only.
 
+## Response time, recovery, drift and temperature
+
+* **t90 and t95.** The start level is the mean over the 5 s before the step onset; the end level the mean of the last window of the segment. A level
+  is reached at the first crossing of a 3-point running median of the fraction (y − y₀)/(y₁ − y₀), interpolated between samples and measured from the
+  onset. The fraction is signed, so a falling step gives its time to return exactly as a rising one gives its time to respond. For a first-order
+  response t90 = 2.303 τ and t95 = 2.996 τ (verified on simulated traces).
+* **Recovery.** With *Steps against the first* set to *Recovery steps*, the jumps opposite in direction to the first one are kept as steps and
+  marked recovery; their times are the quantities *Recovery t90* and *Recovery t95*.
+* **Baseline drift.** A least-squares line through the baseline up to 1 s (or the settle time, if larger) before the first detected step, at least 10 s
+  and 10 points; y − slope·(t − t₀) is analysed and drawn, anchored at the start of the trace.
+* **Temperature coefficient.** y = y<sub>ref</sub> + b·(T − T<sub>ref</sub>) by least squares; α = 100·b/y<sub>ref</sub> %/°C. Its standard error is from the delta method,
+  var(α) = (100/y<sub>ref</sub>)²·[SE(b)² + (b/y<sub>ref</sub>)²·SE(a)² − 2(b/y<sub>ref</sub>)·cov(a, b)] with cov(a, b) = −x̄·s²/Sxx for x = T − T<sub>ref</sub>
+  (about 95 % of 2·SE intervals cover the true α in simulation). Compensation: y<sub>c</sub> = y/(1 + α(T − T<sub>ref</sub>)/100).
+
 ## Ion-selective electrodes
 
 `echem_analyzer/potentiometry.py`; switched on by *Ion-selective electrode* in the Calibration panel.
