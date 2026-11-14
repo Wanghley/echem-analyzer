@@ -19,6 +19,22 @@ wrote as one long trace is cut into scans at the reversal points of the potentia
 |dE/dt| of its time and potential columns is used and the curve is marked as estimated. The four readers marked *preview* were written from the
 manufacturers' file descriptions and tested on synthetic files only.
 
+## Calibration diagnostics and intervals
+
+For linear and log-linear calibrations (`calibration.diagnostics`, `calibration.prediction_interval`):
+
+* **Leverage** hᵢ = diag(X(XᵀX)⁻¹Xᵀ) with X = [1, x] (x = log₁₀ c for log-linear); it sums to 2.
+* **Externally studentized residual** tᵢ = eᵢ / (s₍ᵢ₎√(1−hᵢ)), where s₍ᵢ₎ is the residual SD of the fit without point *i*. A point is an
+  **outlier** when |tᵢ| exceeds the t limit with n−3 degrees of freedom at 0.05/(2n) (Bonferroni, so the whole set is wrongly flagged at most 5 %
+  of the time). With replicates this is conservative on purpose.
+* **Cook's distance** Dᵢ = rᵢ²hᵢ / (p(1−hᵢ)) with the internally studentized rᵢ and p = 2. A point is **influential** when Dᵢ > 1.
+* **Inverse prediction interval.** For a response y₀ (mean of m readings) the interval is the set of x with
+  (y₀ − ȳ − b(x − x̄))² ≤ t²s²(1/m + 1/n + (x − x̄)²/Sxx), solved as a quadratic in x (Fieller). It contains x₀ = (y₀ − a)/b, is exact for a straight
+  line, and is empty when b² ≤ t²s²/Sxx (a slope not different from zero). Log-linear: the same in log₁₀ x, transformed back.
+  Saturating models: x₀ ± t·SE with SE propagated from the residual scatter (approximate).
+* Verified against deleting each point and refitting (Cook's D and tᵢ), against the band edges, and by simulation: 3000 calibrations, 95 % interval,
+  95 % coverage.
+
 ## Bench calculators
 
 `echem_analyzer/bench.py`; each is checked against a value worked out by hand.

@@ -17,6 +17,10 @@ no reader recognises opens the import dialog when you drop it on the window. CV 
 into scans at their reversal points; when a file does not state the scan rate, one is estimated from the time and potential
 columns and marked as estimated.
 
+**Calibration checks.** Every sample read from a calibration gets a 95 % interval as well as ± SE. For straight-line calibrations the study also
+tests each standard: ones that sit far from the line, or that move it a lot, are ringed on the plot, named in the warnings and listed under
+*Standards to check*. Nothing is removed for you.
+
 **Bench calculators** (*Tools ▸ Bench calculators…*, `Ctrl/⌘ + Shift + B`): dilutions (C₁V₁ = C₂V₂ with any one unknown), a serial dilution,
 the stock volumes of a standard-addition series (the exact inverse of the analysis's own model, with warnings for volumes below a pipette's
 range and for a diluted matrix, and rounding to your pipette), the peak current to expect from a redox couple with the instrument range to set

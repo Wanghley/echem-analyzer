@@ -10,6 +10,9 @@ uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`, tagged `vM
   CV (one curve per cycle), LSV, DPV, SWV, chronoamperometry, open-circuit potential and impedance, in the app's units. A file is
   recognised by what it contains, so a `.txt` from one instrument is not mistaken for another's. **These four readers are preview:** they
   were written from the manufacturers' file descriptions and tested on synthetic files only.
+- **Calibration checks.** Samples read from a calibration get a 95 % confidence interval (exact for a straight line: the calibration line's crossing of the
+  prediction band), and linear and log-linear calibrations test every standard for leverage, studentized residual and Cook's distance. Standards that sit
+  far from the line or move it a lot are ringed on the plot, named in the warnings and listed in *Standards to check*; nothing is removed for you.
 - **Bench calculators** (*Tools ▸ Bench calculators…*, `Ctrl/⌘ + Shift + B`): dilution, serial dilution, standard-addition pipette volumes (the exact
   inverse of the analysis's model, with warnings for volumes below a pipette's range and for a diluted matrix), the Randles–Sevcik peak current
   with the instrument current range to set, the Nernst slope with its temperature dependence, ionic strength with the Debye length, and weighing.

@@ -268,7 +268,13 @@ adjusted R², RMSE and AIC so you can see how close the call was.</li>
 replicates when there are any, otherwise of the fit residuals. Blank replicates are far better: residual-based limits flatter a good fit.</li>
 <li><b>Linear range:</b> the widest run of levels with R² ≥ 0.99 and each point within 10 % of the line (both adjustable). “Use only the linear range” restricts
 S, LOD and LOQ to it.</li>
-<li><b>Samples</b> are read from the fitted curve by inverse prediction with a standard error. A response outside what the model can invert is reported as such.</li>
+<li><b>Samples</b> are read from the fitted curve by inverse prediction with a standard error and a <b>95 % interval</b>. For a straight line the interval
+is found by inverting the prediction band, so it is exact and, when the line is poorly determined, wider on one side; if the slope cannot be told from zero
+there is no finite interval. For the saturating models it is x ± t·SE and approximate. A response outside what the model can invert is reported as such.</li>
+<li><b>Standards to check.</b> For linear and log-linear fits each standard is tested for how far it sits from the line without it (an externally studentized
+residual, beyond a Bonferroni-corrected t limit, so a clean calibration is flagged in about 5 % of cases at most) and for how far it moves the line (Cook's
+distance above 1). Flagged standards are ringed on the plot, named in the warnings and listed with the reason. Nothing is removed for you: look at the
+measurement, then untick it in the Responses table if it is wrong.</li>
 </ul>
 <p><b>Pitfalls the app warns about:</b> standards from several electrodes or several times pooled into one line (use the Electrode and Time
 filters), different units, fewer than two concentrations, and log-linear fits that have no single LOD.</p>
