@@ -7,7 +7,7 @@ the report builder and the tests all use this one interface, so adding a techniq
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any, Optional
 
 import numpy as np
@@ -15,6 +15,7 @@ import numpy as np
 from . import electrode, peaks, techniques, transients
 from . import eis as eis_engine
 from .ca_analysis import analyze_ca, detect_step_events
+from .calibration import fit_linear
 from .io_palmsens import parse_stock_from_title
 from .labels import curve_run_label
 from .prefs import prefs
@@ -340,6 +341,10 @@ class StaircaseAnalyzer(Analyzer):
         Field("sharp", "Step shape", "choice", "auto", tip="Sharp steps are told apart from smooth decays by how abruptly "
               "they happen; potentiometric and slow biosensor responses take seconds and need 'allow slow'.",
               choices=(("Automatic (by technique)", "auto"), ("Sharp steps only", "sharp"), ("Allow slow responses", "slow"))),
+        Field("detrend", "Baseline drift", "choice", "none", tip="A sensor on skin or in a flowing sample often drifts. This fits a straight line to the "
+              "baseline before the first step (at least 10 s and 10 points) and removes it from the whole trace, so the plateaus show "
+              "the change the analyte made. It assumes the drift is linear and goes on at the same rate; check the corrected trace.",
+              choices=(("None", "none"), ("Remove a straight-line drift", "linear"))),
         Field("opposite", "Steps against the first", "choice", "ignore", tip="In an additions experiment a jump the other way is an "
               "artefact (a bubble, stirring) and is only reported. For a reversible sensor that is washed out, treat it as the "
               "sensor recovering: its time is reported as the recovery time.",
@@ -347,6 +352,15 @@ class StaircaseAnalyzer(Analyzer):
         Field("expected", "Expected steps", "int", 0, 0, 50, 1, 0, "", "0 = automatic.", advanced=True),
         Field("drop_last", "Drop last N points", "int", 1, 0, 100, 1, 0, advanced=True),
     )
+
+    @staticmethod
+    def _baseline_drift(t: np.ndarray, y: np.ndarray, first_step: float, settle: float) -> Optional[float]:
+        """Slope (per second) of the baseline before the first step, or None if there is not enough of it to say."""
+        m = t <= first_step - max(settle, 1.0)
+        if m.sum() < 10 or (t[m].max() - t[m].min()) < 10.0:
+            return None
+        fit = fit_linear(t[m], y[m])
+        return float(fit.p("slope")) if fit.ok else None
 
     @staticmethod
     def _abruptness(curve: Curve, mode: str) -> float:
@@ -366,9 +380,19 @@ class StaircaseAnalyzer(Analyzer):
             steps, ignored = np.sort(np.concatenate([steps, ignored])), np.array([])
         s = CAAnalysisSettings(drop_last=0, step_times=[float(v) for v in steps], ignored_events=[float(v) for v in ignored],
                                settle=params["settle"], window=params["window"])
+        shown, drift, drift_note = curve, None, ""
+        if params["detrend"] == "linear" and len(steps):
+            drift = self._baseline_drift(t, y, float(steps[0]), params["settle"])
+            if drift is None:
+                drift_note = "Drift correction needs at least 10 s and 10 points of baseline before the first step: the trace is used as it is."
+            else:
+                y = y - drift * (t - t[0])
+                shown = replace(curve, y=np.concatenate([y, curve.y[n:]]))
         r = analyze_ca(t, y, s)
-        out.data = (curve, s, r)
+        out.data = (shown, s, r)
         out.warnings = [w for w in r.warnings if "Enter stock" not in w]
+        if drift_note:
+            out.warnings.append(drift_note)
         if not len(steps):
             out.warnings.append("No steps were detected. Lower the threshold or check the trace.")
             return out
@@ -406,6 +430,8 @@ class StaircaseAnalyzer(Analyzer):
                        Metric("Median t90", g(float(np.nanmedian(t90)) if np.isfinite(t90).any() else NAN, 3), "s"),
                        Metric("Noise", g(float(np.nanmedian(r.plateau_sd)), 2), u)]
         out.rows = [("Steps detected", str(len(steps)), ""), ("Baseline", g(r.plateau[0]), u), ("Final plateau", g(r.plateau[-1]), u)]
+        if drift is not None:
+            out.rows.append(("Baseline drift removed", g(drift * 60.0, 3), f"{u}/min"))
         out.responses = [ResponseSpec("Plateau", u, float(r.plateau[k]), float(r.plateau_sd[k]), suffix=("baseline" if k == 0 else f"step {k}"))
                          for k in range(len(r.plateau))]
         out.responses += [ResponseSpec("Step change (Δ)", u, float(r.delta[k]), suffix=f"step {k}") for k in range(1, len(r.plateau))]

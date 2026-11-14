@@ -95,3 +95,60 @@ def test_a_staircase_of_additions_alone_has_no_recoveries():
     assert not any(s.quantity.startswith("Recovery") for s in r.responses)
     assert all(not row[0].endswith("(recovery)") for row in r.table[1])
     assert sum(s.quantity == "t95" for s in r.responses) == 3
+
+
+# ===================================================================== baseline drift
+
+def drifting(rate_per_min=0.6, tau=0.8, seed=6):
+    """The additions staircase of test_study (true changes -0.5, -0.9 and -1.2 against the baseline) on a baseline that drifts."""
+    from test_study import slow_staircase
+    t, y = slow_staircase(tau, seed)
+    return t, y + rate_per_min / 60.0 * t
+
+
+def deltas(result):
+    return [s.value for s in result.responses if s.quantity == "Step change (Δ)"]
+
+
+def test_a_straight_line_drift_is_removed_so_the_plateaus_show_what_the_analyte_did():
+    t, y = drifting(0.6)                                                              # +0.6 µA/min: 1 µA over the run, as big as the signal
+    raw = staircase(t, y)
+    fixed = staircase(t, y, detrend="linear")
+    assert deltas(raw) != pytest.approx([-0.5, -0.9, -1.2], abs=0.1)                  # the drift is in the steps
+    assert deltas(fixed) == pytest.approx([-0.5, -0.9, -1.2], abs=0.04)
+    plateaus = [s.value for s in fixed.responses if s.quantity == "Plateau"]
+    assert plateaus == pytest.approx([-0.3, -0.8, -1.2, -1.5], abs=0.05)
+    row = next(r for r in fixed.rows if r[0] == "Baseline drift removed")
+    assert float(row[1]) == pytest.approx(0.6, rel=0.1) and row[2] == "µA/min"
+
+
+def test_the_corrected_trace_is_what_is_drawn_and_the_original_is_untouched():
+    t, y = drifting(0.6)
+    c = Curve(kind="CA", title="additions", x=t, y=y.copy(), x_unit="s", y_unit="µA", uid="u")
+    a = analyzers.ANALYZERS["staircase"]
+    r = a.run(c, a.params_for({"drop_last": 0, "window": 5.0, "sharp": "slow", "detrend": "linear"}))
+    shown = r.data[0]
+    assert np.array_equal(c.y, y) and not np.array_equal(shown.y, y) and len(shown.y) == len(y)
+    assert shown.y[0] == pytest.approx(y[0])                                          # anchored at the start of the trace
+    assert shown.y[-1] - y[-1] == pytest.approx(-0.6 / 60 * (t[-1] - t[0]), rel=0.03)   # the drift estimate is good to a few percent
+    none = a.run(c, a.params_for({"drop_last": 0, "window": 5.0, "sharp": "slow"}))
+    assert none.data[0] is c
+
+
+def test_too_little_baseline_leaves_the_trace_alone_and_says_why():
+    t, y = drifting(0.6)
+    keep = t >= 18.0                                                                  # only 7 s before the first step at 25 s
+    c = Curve(kind="CA", title="short", x=t[keep], y=y[keep], x_unit="s", y_unit="µA", uid="u")
+    a = analyzers.ANALYZERS["staircase"]
+    r = a.run(c, a.params_for({"drop_last": 0, "window": 5.0, "sharp": "slow", "detrend": "linear"}))
+    assert r.ok and any("needs at least 10 s" in w for w in r.warnings)
+    assert not any(row[0] == "Baseline drift removed" for row in r.rows) and r.data[0] is c
+
+
+def test_a_drift_free_trace_is_not_changed_by_asking_for_the_correction():
+    from test_study import slow_staircase
+    t, y = slow_staircase(0.8)
+    plain, corrected = staircase(t, y), staircase(t, y, detrend="linear")
+    assert deltas(corrected) == pytest.approx(deltas(plain), abs=0.02)
+    drift = float(next(r for r in corrected.rows if r[0] == "Baseline drift removed")[1])
+    assert abs(drift) < 0.05                                                          # µA/min: nothing to remove
