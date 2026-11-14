@@ -384,6 +384,11 @@ class CalibrationPanel(_Panel):
         self.study: Optional[sa.CalibrationStudy] = None
         self.quantity, self.condition, self.group, self.time = QComboBox(), QComboBox(), QComboBox(), QComboBox()
         self.model, self.unit, self.xscale, self.sigma = QComboBox(), QComboBox(), QComboBox(), QComboBox()
+        self.normalise = QComboBox()
+        for val, text in sa.NORMALISATIONS.items():
+            self.normalise.addItem(text, val)
+        self.normalise.setToolTip("For label-free and signal-off sensors every electrode starts from its own baseline. "
+                                  "Measure a blank (role “blank”) on each electrode, then calibrate the change from it.")
         for text, val in MODELS:
             self.model.addItem(text, val)
         self.unit.addItem("Automatic", "")
@@ -411,14 +416,15 @@ class CalibrationPanel(_Panel):
         self.dev.setSuffix(" %")
         self.dev.setValue(10)
         self.time.setToolTip("Use one measurement session only: a calibration at day 0 and one at day 7 are different experiments.")
-        for label, w in (("Quantity", self.quantity), ("Condition", self.condition), ("Electrode", self.group), ("Time", self.time), ("Model", self.model),
+        for label, w in (("Quantity", self.quantity), ("Condition", self.condition), ("Electrode", self.group), ("Time", self.time),
+                         ("Response as", self.normalise), ("Model", self.model),
                          ("Concentration unit", self.unit), ("x axis", self.xscale), ("σ for LOD / LOQ", self.sigma),
                          ("LOD factor k", self.k_lod)):
             self.form.addRow(label, w)
         self.form.addRow(self.restrict)
         self.form.addRow("Linear range R² ≥", self.r2)
         self.form.addRow("Max deviation", self.dev)
-        for w in (self.quantity, self.condition, self.group, self.time, self.model, self.unit, self.xscale, self.sigma):
+        for w in (self.quantity, self.condition, self.group, self.time, self.model, self.unit, self.xscale, self.sigma, self.normalise):
             w.currentIndexChanged.connect(self._changed)
         self.quantity.currentIndexChanged.connect(self._refill_dependent)
         for w in (self.k_lod, self.r2, self.dev):
@@ -441,7 +447,7 @@ class CalibrationPanel(_Panel):
         return sa.CalibrationOptions(
             quantity=self.quantity.currentText(), condition=self.condition.currentText() or "analyte",
             group=self.group.currentText() if self.group.currentIndex() > 0 else None, time=self.time.currentData(),
-            model=self.model.currentData(),
+            model=self.model.currentData(), normalise=self.normalise.currentData(),
             conc_unit=self.unit.currentData() or "", sigma_from=self.sigma.currentData(), k_lod=self.k_lod.value(),
             k_loq=self.k_lod.value() * 10 / 3, restrict_range=self.restrict.isChecked(), r2_min=self.r2.value(),
             dev_max=self.dev.value() / 100.0)
@@ -464,7 +470,7 @@ class CalibrationPanel(_Panel):
                     cb.setCurrentIndex(i)
         if "time" in st:
             fill_time_combo(self.time, rs, self.quantity.currentText(), keep=st["time"])
-        for cb, key in ((self.model, "model"), (self.unit, "conc_unit"), (self.sigma, "sigma_from")):
+        for cb, key in ((self.model, "model"), (self.unit, "conc_unit"), (self.sigma, "sigma_from"), (self.normalise, "normalise")):
             i = cb.findData(st.get(key, cb.currentData()))
             if i >= 0:
                 with QSignalBlocker(cb):

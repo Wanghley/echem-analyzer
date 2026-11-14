@@ -216,6 +216,7 @@ def calibration_rows(cs: sa.CalibrationStudy) -> tuple[list[tuple[str, str]], li
     o, f = cs.options, cs.fom
     settings = [("Quantity", f"{o.quantity} ({cs.y_unit})"), ("Selection", _where(o)),
                 ("Model", cal.MODEL_LABELS[cs.model] + (" (chosen by AIC)" if o.model == "auto" else "")),
+                *([("Response", sa.NORMALISATIONS[o.normalise] + ", per electrode")] if o.normalise in ("delta", "percent") else []),
                 ("Concentration unit", cs.conc_unit),
                 ("σ for LOD / LOQ", {"auto": "blank if available, else residuals", "blank": "blank measurements",
                                      "residual": "fit residuals"}.get(o.sigma_from, o.sigma_from)),

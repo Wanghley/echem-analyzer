@@ -92,6 +92,7 @@ class CalibrationOptions:
     restrict_range: bool = True
     r2_min: float = 0.99
     dev_max: float = 0.10
+    normalise: str = "none"                # none | delta | percent: response as the change from each electrode's own blank
 
 
 @dataclass
@@ -142,6 +143,44 @@ class CalibrationStudy:
         return [(int(self.fit_index[i]), d.reason(i)) for i in d.flagged] if d is not None else []
 
 
+NORMALISATIONS = {"none": "As measured", "delta": "Change from the blank (Δ)", "percent": "Percent change from the blank (%)"}
+
+
+def normalise_values(mode: str, standards: Sequence[Response], blanks: Sequence[Response], samples: Sequence[Response],
+                     y_unit: str) -> tuple[list[float], list[float], list[float], str, list[str]]:
+    """Responses of standards, blanks and samples as the change from the blank of the *same electrode*.
+
+    Label-free and signal-off sensors (Rct of an impedimetric immunosensor, the current of an aptamer sensor) start from a
+    different baseline on every electrode, so pooling raw values hides a sensitivity that is the same for all of them.
+    ``delta`` subtracts the electrode's mean blank; ``percent`` also divides by it.  An electrode with no blank of its own uses
+    the mean of the others' blanks; with no blank at all, or a blank of zero for ``percent``, the values stay as measured.
+    Returns (standards, blanks, samples, the new unit, warnings).
+    """
+    raw = ([r.value for r in standards], [r.value for r in blanks], [r.value for r in samples])
+    if mode not in ("delta", "percent"):
+        return (*raw, y_unit, [])
+    if not blanks:
+        return (*raw, y_unit, ["Normalising to the blank needs blank measurements (role “blank”): the responses are used as measured."])
+    by_group: dict[str, list[float]] = defaultdict(list)
+    for r in blanks:
+        by_group[r.group].append(r.value)
+    pooled = float(np.mean([r.value for r in blanks]))
+    base = {gname: float(np.mean(v)) for gname, v in by_group.items()}
+    warnings, missing = [], sorted({r.group for r in (*standards, *samples) if r.group not in base})
+    if missing:
+        warnings.append("No blank for electrode " + ", ".join(f"“{m or '(unnamed)'}”" for m in missing)
+                        + f": the mean of the other blanks ({pooled:.4g} {y_unit}) is used.")
+    if mode == "percent" and any(b == 0 for b in [*base.values(), pooled]):
+        return (*raw, y_unit, warnings + ["A blank of zero cannot be a reference for a percent change: the responses are used as measured."])
+
+    def apply(r: Response) -> float:
+        b = base.get(r.group, pooled)
+        return r.value - b if mode == "delta" else 100.0 * (r.value - b) / b
+
+    return ([apply(r) for r in standards], [apply(r) for r in blanks], [apply(r) for r in samples],
+            f"Δ{y_unit}" if mode == "delta" else "%", warnings)
+
+
 def run_calibration(responses: Sequence[Response], opts: CalibrationOptions) -> CalibrationStudy:
     out = CalibrationStudy(opts)
     std = [r for r in select(responses, opts.quantity, opts.condition, ("standard",), opts.group, opts.time) if r.conc is not None]
@@ -154,10 +193,12 @@ def run_calibration(responses: Sequence[Response], opts: CalibrationOptions) -> 
     except ValueError as exc:
         out.warnings.append(str(exc))
         return out
-    out.x, out.y = np.array(xs, float), np.array([r.value for r in std], float)
+    std_values, blank_values, sample_values, out.y_unit, norm_warnings = normalise_values(opts.normalise, std, blanks, samples, out.y_unit)
+    out.warnings += norm_warnings
+    out.x, out.y = np.array(xs, float), np.array(std_values, float)
     out.groups = [r.group for r in std]
     out.labels = [r.source_label or r.id for r in std]
-    out.blanks = np.array([r.value for r in blanks], float)
+    out.blanks = np.array(blank_values, float)
     if len(set(out.x)) < 2:
         out.warnings.append("A calibration needs standards at two or more different concentrations "
                             "(set the concentrations in the Responses table).")
@@ -207,10 +248,10 @@ def run_calibration(responses: Sequence[Response], opts: CalibrationOptions) -> 
 
     # quantify samples with the chosen model
     use_fit = out.fit if out.fit.ok else all_fits[cal.LINEAR]
-    for r in samples:
-        s = SampleResult(r.source_label or r.id, r.value, group=r.group)
-        s.conc, s.se = cal.predict_concentration(use_fit, r.value)
-        iv = cal.prediction_interval(use_fit, r.value)
+    for r, value in zip(samples, sample_values):
+        s = SampleResult(r.source_label or r.id, value, group=r.group)
+        s.conc, s.se = cal.predict_concentration(use_fit, value)
+        iv = cal.prediction_interval(use_fit, value)
         s.lo, s.hi, s.ci_method = iv.lo, iv.hi, iv.method
         if r.conc is not None:
             try:
