@@ -38,6 +38,9 @@ def main(argv: list[str] | None = None) -> int:
     if len(argv) > 1 and argv[1] == "--selftest":
         from .selftest import run
         return run(argv[2] if len(argv) > 2 else None)
+    from . import cli
+    if len(argv) > 1 and (argv[1] in cli.COMMANDS or argv[1] in ("-h", "--help")):
+        return cli.run(argv[1:])                       # a command: no window (Qt, if needed, runs offscreen)
 
     from PySide6.QtGui import QIcon
 

@@ -109,3 +109,23 @@ def test_an_empty_project_still_gives_a_valid_package(tmp_path):
     names = read_zip(tmp_path / "e.zip")
     assert info["curves"] == 0 and "responses.csv" in names and names["README.md"].decode("utf-8").startswith("# Echem Analyzer data package")
     assert "devices.csv" not in names and "acceptance.json" not in names
+
+
+def test_the_file_menu_exports_a_package_of_the_open_project(qapp, tmp_path, monkeypatch):
+    from PySide6.QtWidgets import QFileDialog
+    from helpers import make_window
+    data, _ = make_project(tmp_path)
+    win = make_window(tmp_path / "w")
+    win.session.add_paths([tmp_path / "run one.csv"])
+    win.session.responses[:] = data.responses
+    out = tmp_path / "from_menu.zip"
+    assert win.act_package.text() == "Export data package (zip)…"
+    monkeypatch.setattr(QFileDialog, "getSaveFileName", staticmethod(lambda *a, **k: (str(out), "")))
+    win.act_package.trigger()
+    names = read_zip(out)
+    assert "raw/run_one.csv" in names and "responses.csv" in names and any(n.startswith("curves/") for n in names)
+    assert "1 curves" in win.statusBar().currentMessage()
+    monkeypatch.setattr(QFileDialog, "getSaveFileName", staticmethod(lambda *a, **k: ("", "")))
+    out.unlink()
+    win.act_package.trigger()                                                                 # cancelled: nothing written
+    assert not out.exists()

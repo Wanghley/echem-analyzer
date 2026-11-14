@@ -218,6 +218,7 @@ class MainWindow(QMainWindow):
         self.act_xlsx = self._action(m, "Export workbook (Excel)…", self.export_workbook_dialog,
                                      QKeySequence("Ctrl+Shift+E"))
         self.act_csv = self._action(m, "Export all results (CSV)…", self.export_all_results_dialog)
+        self.act_package = self._action(m, "Export data package (zip)…", self.export_package_dialog)
         m.addSeparator()
         self.act_settings = self._action(m, "Settings…", self.show_settings, QKeySequence("Ctrl+,"))
         m.addSeparator()
@@ -665,6 +666,21 @@ class MainWindow(QMainWindow):
                                     "Nothing to export yet: open at least one CA or CV run first.")
         else:
             QMessageBox.information(self, "Export all results", f"Wrote {len(written)} file(s) to\n{d}")
+
+    def export_package_dialog(self) -> None:
+        """A zip with the raw files, every curve, the responses, settings and a README: readable without this program."""
+        from ..package import build_package
+        stem = (self.session.display_name() or "project").replace(" ", "_")
+        path, _ = QFileDialog.getSaveFileName(self, "Export data package", str(Path(self._last_dir()) / f"{stem}_package.zip"), "Zip (*.zip)")
+        if not path:
+            return
+        try:
+            info = build_package(self.session.to_project_data(), path)
+        except OSError as exc:
+            QMessageBox.warning(self, "Export data package", str(exc))
+            return
+        note = f" ({len(info['raw_missing'])} original file(s) not found)" if info["raw_missing"] else ""
+        self.statusBar().showMessage(f"Wrote {Path(path).name}: {info['curves']} curves, {info['responses']} responses{note}.", 8000)
 
     # ================================================================== import / routing
     TABLE_FILTER = f"Tables ({' '.join('*' + s for s in importers.TABLE_SUFFIXES)});;All files (*)"
