@@ -84,9 +84,9 @@ def build(data: ProjectData, quantity: str, condition: str = "analyte", variant_
         subset = [r for r in responses if r.group in row.devices]
         cs = sa.run_calibration(subset, sa.CalibrationOptions(quantity=quantity, condition=condition, model="linear", conc_unit=cmp_.conc_unit))
         if cs.ok:
-            png = plots.render_png(lambda fig, p, cs=cs: plots.study_calibration(fig, cs, p), (6.4, 4.4))
+            png = plots.render_png(lambda fig, p, cs=cs: plots.study_calibration(fig, cs, p), (6.4, 3.2))
             sec.blocks.append(FigureBlock(f"datasheet/{i}_calibration.png", f"Calibration of the {row.variant} electrodes (all standards pooled)",
-                                          png, *plots.png_size(png), 0.62))
+                                          png, *plots.png_size(png), 0.46))              # small enough that a page holds it on A4 and on Letter
         concs = sorted({round(x, 9) for x in (cs.x.tolist() if cs.ok else [])})
         cond = [f"Response: {quantity} ({cmp_.y_unit})", f"condition: {condition}"]
         if concs:
@@ -94,8 +94,9 @@ def build(data: ProjectData, quantity: str, condition: str = "analyte", variant_
         sec.blocks.append(NoteBlock("Measured as " + "; ".join(cond) + ". Sensitivity is the slope of a straight-line calibration; the detection limit is "
                                     f"kσ/S with k = {sa.CalibrationOptions().k_lod:g}, σ from the blank or the fit residuals. The between-electrode "
                                     "spread and the yield describe the electrodes made, not a single one."))
-        for w in cs.warnings if cs.ok else []:
-            sec.blocks.append(NoteBlock(w, "warning"))
+        if cs.ok and cs.warnings:                    # one line: the plot rings flagged standards, and a page has little room
+            more = f" (and {len(cs.warnings) - 1} more in the study report)" if len(cs.warnings) > 1 else ""
+            sec.blocks.append(NoteBlock(cs.warnings[0][:220] + ("…" if len(cs.warnings[0]) > 220 else "") + more, "warning"))
         sections.append(sec)
     return Report(title=f"Sensor datasheet · {quantity}", meta_rows=[(k, v) for k, v in (("Project", data.meta.name), ("Analyte", data.meta.analyte),
                                                                  ("Sample matrix", data.meta.matrix), ("Operator", data.meta.operator)) if v],

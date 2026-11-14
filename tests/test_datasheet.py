@@ -50,10 +50,19 @@ def test_a_single_variant_can_be_asked_for_and_nothing_to_show_is_an_error():
         ds.build(ProjectData(), "Peak")
 
 
-def test_the_pdf_has_one_page_per_variant(qapp, tmp_path):
-    rep = ds.build(project(), "Peak")
-    pages = write_pdf(rep, tmp_path / "datasheet.pdf")
-    assert pages == 2                                                                           # one page each, as promised
+@pytest.mark.parametrize("settings", [{"page_size": "A4"}, {"page_size": "Letter"},
+                                      {"page_size": "Letter", "plot_style": "publication", "plot_font_scale": 1.07}])    # the last is a real user's
+def test_the_pdf_has_one_page_per_variant_on_either_paper_size_and_style(qapp, tmp_path, settings):
+    from echem_analyzer.prefs import prefs
+    before = {k: prefs.get(k) for k in settings}
+    for k, v in settings.items():
+        prefs.set(k, v, save=False)
+    try:
+        pages = write_pdf(ds.build(project(), "Peak"), tmp_path / "datasheet.pdf")
+    finally:
+        for k, v in before.items():
+            prefs.set(k, v, save=False)
+    assert pages == 2                                                                           # one page each, as promised, even on shorter paper
     doc = QPdfDocument()
     doc.load(str(tmp_path / "datasheet.pdf"))
     assert doc.pageCount() == 2 and (tmp_path / "datasheet.pdf").stat().st_size > 20_000
