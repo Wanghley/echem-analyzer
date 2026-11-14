@@ -251,3 +251,20 @@ def test_the_report_states_an_electrode_calibration_in_electrode_terms():
     assert slope.startswith("+58.") and "% of the theoretical 59.16" in slope
     assert "µM" in dict(results)["Detection limit (IUPAC)"]
     assert "LOQ" not in keys                                                            # an electrode has no LOQ in this sense
+
+
+def test_the_report_uses_the_stored_charge_and_temperature_not_the_defaults():
+    from echem_analyzer import study_report
+    from echem_analyzer.models import Response
+    e = ise_response(LEVELS, s=-61.54)                                                  # an anion electrode held at 37 °C
+    rs = [Response(id=f"s{i}", source_label=f"std {i}", quantity="E", unit="mV", value=float(v), conc=float(c * 1e6), conc_unit="µM",
+                   group="A1", role="standard") for i, (c, v) in enumerate(zip(LEVELS, e))]
+    stored = {"calibration": {"quantity": "E", "potentiometric": True, "z": -1, "temp_c": 37.0}}
+    study = study_report.compute_study(rs, {"study": stored})
+    (cs,) = study.calibrations
+    assert cs.options.z == -1 and cs.options.temp_c == 37.0 and cs.ise.nernst == pytest.approx(61.54, abs=0.01)
+    assert cs.ise.slope_pct == pytest.approx(100.0, abs=1.5) and not any("anion" in w for w in cs.warnings)
+    wrong = study_report.compute_study(rs, {"study": {"calibration": {"quantity": "E", "potentiometric": True, "z": 0, "temp_c": 900}}})
+    assert wrong.calibrations[0].options.z == 1 and wrong.calibrations[0].options.temp_c == 25.0       # junk in a hand-edited project
+    zero = study_report.compute_study(rs, {"study": {"calibration": {"quantity": "E", "potentiometric": True, "z": -1, "temp_c": 0.0}}})
+    assert zero.calibrations[0].options.temp_c == 0.0                                    # 0 °C is a real temperature

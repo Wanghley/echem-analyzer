@@ -71,6 +71,10 @@ def _clean_option(name: str, value, default):
         return value if value is None or isinstance(value, str) else default
     if isinstance(default, bool):
         return value if isinstance(value, bool) else default
+    if name == "z":                                             # the ion's charge: a whole number from -4 to 4, never 0
+        return value if isinstance(value, int) and not isinstance(value, bool) and value in (-4, -3, -2, -1, 1, 2, 3, 4) else default
+    if name == "temp_c":                                        # an electrode's temperature: any sensible value, 0 °C included
+        return float(value) if isinstance(value, (int, float)) and not isinstance(value, bool) and -50 < value < 150 else default
     if isinstance(default, float):
         return float(value) if isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value) and value > 0 else default
     if name == "model":
