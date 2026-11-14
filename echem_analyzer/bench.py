@@ -16,6 +16,7 @@ from typing import Optional, Sequence
 
 from .calibration import nernst_slope
 from .electrode import randles_sevcik_slope
+from .potentiometry import relative_permittivity_water
 from .study_analysis import CONC_FACTORS
 
 K_B, N_A, E_CHARGE, EPS_0 = 1.380649e-23, 6.02214076e23, 1.602176634e-19, 8.8541878128e-12
@@ -245,11 +246,6 @@ def ionic_strength(species: Sequence[tuple[float, int]]) -> float:
         if c < 0 or not math.isfinite(c):
             raise BenchError("Concentrations cannot be negative.")
     return 0.5 * sum(c * z * z for c, z in species)
-
-
-def relative_permittivity_water(temp_c: float) -> float:
-    """Static relative permittivity of water (Malmberg–Maryott fit, 0–100 °C): 78.3 at 25 °C."""
-    return 87.74 - 0.40008 * temp_c + 9.398e-4 * temp_c ** 2 - 1.41e-6 * temp_c ** 3
 
 
 def debye_length_nm(ionic_strength_m: float, temp_c: float = 25.0, eps_r: Optional[float] = None) -> float:
