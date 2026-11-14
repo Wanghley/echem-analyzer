@@ -70,3 +70,100 @@ def test_head_reading_survives_a_multibyte_character_cut_in_two(tmp_path):
     p = tmp_path / "u16.csv"
     p.write_bytes(("Date and time:,2026\r\n" + "µ" * 20000).encode("utf-16"))
     assert readers.pick(p).key == "csv"                               # the read stops in the middle of a UTF-16 pair
+
+
+# ===================================================================== Gamry .DTA
+
+def _gamry_cv_rows(cycle: int, rate: float = 0.1):
+    e, i_ua = synth.cv_scan(1.0, 3.0)
+    t = (cycle - 1) * e.size * 0.005 / rate + np.arange(e.size) * 0.005 / rate
+    return [(k, float(t[k]), float(e[k]), float(i_ua[k] * 1e-6), float(e[k]), 0.0, 0.0, 0.0, 5, 0) for k in range(e.size)], e, i_ua
+
+
+GAMRY_CV_COLS = ["Pt", "T", "Vf", "Im", "Vu", "Pwr", "Sig", "Ach", "IERange", "Over"]
+GAMRY_CV_UNITS = ["#", "s", "V vs. Ref.", "A", "V", "W", "V", "V", "#", "bits"]
+
+
+def test_gamry_cv_has_one_curve_per_cycle_in_the_app_s_units(tmp_path):
+    (rows1, e, i_ua), (rows2, _, _) = _gamry_cv_rows(1)[:3], _gamry_cv_rows(2)[:3]
+    synth.write_gamry_dta(tmp_path / "cv.DTA", "CV", "Cyclic Voltammetry",
+                          {"VINIT": (0.0, "Initial E (V)"), "VLIM1": (0.6, "Scan Limit 1 (V)"), "VLIM2": (-0.2, "Scan Limit 2 (V)"),
+                           "SCANRATE": (100.0, "Scan Rate (mV/s)"), "CYCLES": (2, "Cycles")},
+                          [("CURVE1", GAMRY_CV_COLS, GAMRY_CV_UNITS, rows1), ("CURVE2", GAMRY_CV_COLS, GAMRY_CV_UNITS, rows2)])
+    assert readers.pick(tmp_path / "cv.DTA").key == "gamry"                        # the suffix is matched in any case
+    f = readers.load(tmp_path / "cv.DTA")
+    assert f.fmt == "gamry" and [c.scan for c in f.curves] == [1, 2] and {c.kind for c in f.curves} == {"CV"}
+    c = f.curves[0]
+    assert np.allclose(c.x, e) and np.allclose(c.y, i_ua, atol=1e-9) and (c.x_unit, c.y_unit) == ("V", "µA")
+    assert c.meta["scan_rate"] == pytest.approx(0.1)                               # stated in mV/s, kept in V/s
+    assert (c.meta["e_begin"], c.meta["e_vtx1"], c.meta["e_vtx2"]) == (0.0, 0.6, -0.2)
+    assert c.meta["run_title"] == "Cyclic Voltammetry" and c.meta["device"] == "REF600-12345"
+    assert [x.uid for x in f.curves] == ["cv.DTA#0", "cv.DTA#1"]
+
+
+def test_gamry_cv_with_all_cycles_in_one_table_is_cut_at_the_vertices(tmp_path):
+    rows1, e, _ = _gamry_cv_rows(1)[:3]
+    rows2 = _gamry_cv_rows(2)[0]
+    rows = [(k, *r[1:]) for k, r in enumerate(rows1 + rows2)]
+    synth.write_gamry_dta(tmp_path / "cv.dta", "CV", "CV", {"CYCLES": (2, "Cycles")}, [("CURVE", GAMRY_CV_COLS, GAMRY_CV_UNITS, rows)])
+    f = readers.load(tmp_path / "cv.dta")
+    assert [c.scan for c in f.curves] == [1, 2]
+    assert f.curves[0].meta["scan_rate"] == pytest.approx(0.1, rel=0.02)           # not stated: worked out from time and potential
+    assert "estimated" in f.curves[0].meta["scan_rate_source"]
+
+
+def test_gamry_chronoamperometry_is_a_ca_curve_with_its_step_potential(tmp_path):
+    t = np.linspace(0, 20, 201)
+    i = 2e-6 + 1e-7 * (t > 10)
+    rows = [(k, float(t[k]), 0.3, float(i[k]), 0.3, 0.0, 0.0, 0.0, 5, 0) for k in range(t.size)]
+    synth.write_gamry_dta(tmp_path / "ca.dta", "CHRONOA", "Chronoamperometry", {"VSTEP1": (0.3, "Step 1 Voltage (V)")},
+                          [("CURVE", GAMRY_CV_COLS, GAMRY_CV_UNITS, rows)])
+    c = readers.load(tmp_path / "ca.dta").curves[0]
+    assert c.kind == "CA" and np.allclose(c.x, t) and np.allclose(c.y, i * 1e6) and c.x_unit == "s"
+    assert c.meta["E"] == 0.3 and c.meta["dt"] == pytest.approx(0.1)
+
+
+def test_gamry_open_circuit_potential_keeps_volts(tmp_path):
+    t = np.linspace(0, 60, 61)
+    v = 0.25 - 1e-3 * np.exp(-t / 10)
+    rows = [(k, float(t[k]), float(v[k]), 0.0, 5, 0) for k in range(t.size)]
+    synth.write_gamry_dta(tmp_path / "ocp.dta", "CORPOT", "Open Circuit Potential",
+                          tables=[("OCVCURVE", ["Pt", "T", "Vm", "Vsig", "Ach", "Over"], ["#", "s", "V vs. Ref.", "V", "V", "bits"], rows)])
+    c = readers.load(tmp_path / "ocp.dta").curves[0]
+    assert c.kind == "OCP" and np.allclose(c.y, v) and (c.x_unit, c.y_unit) == ("s", "V")
+
+
+def test_gamry_impedance_follows_the_app_s_sign_convention(tmp_path):
+    f_hz, z = synth.randles_spectrum()
+    rows = [(k, float(k), float(f_hz[k]), float(z[k].real), float(z[k].imag), 0.0, 0.0, 0.0, 0.0, 0.0, 5) for k in range(f_hz.size)]
+    cols = ["Pt", "Time", "Freq", "Zreal", "Zimag", "Zsig", "Zmod", "Zphz", "Idc", "Vdc", "IERange"]
+    synth.write_gamry_dta(tmp_path / "eis.dta", "EISPOT", "Potentiostatic EIS",
+                          tables=[("ZCURVE", cols, ["#", "s", "Hz", "ohm", "ohm", "V", "ohm", "°", "A", "V", "#"], rows)])
+    c = readers.load(tmp_path / "eis.dta").curves[0]
+    assert c.kind == "EIS" and set(c.extra) == {"freq", "zre", "zim"}
+    assert np.allclose(c.extra["freq"], f_hz) and np.allclose(c.extra["zre"], z.real, rtol=1e-5)
+    assert (c.extra["zim"] < 0).all() and np.allclose(c.y, -c.extra["zim"])
+
+
+def test_gamry_differential_pulse_uses_the_differential_current(tmp_path):
+    e, i = synth.dpv_trace(5.0)
+    rows = [(k, float(k), float(e[k]), float(e[k]), float(i[k] * 1e-6), float(i[k] * 1e-6 * 0.5)) for k in range(e.size)]
+    synth.write_gamry_dta(tmp_path / "dpv.dta", "DPV", "Differential Pulse",
+                          tables=[("CURVE", ["Pt", "T", "Vstep", "Vf", "Idif", "Im"], ["#", "s", "V", "V", "A", "A"], rows)])
+    c = readers.load(tmp_path / "dpv.dta").curves[0]
+    assert c.kind == "DPV" and np.allclose(c.y, i, atol=1e-6) and np.allclose(c.x, e)
+
+
+def test_gamry_decimal_commas_and_unknown_tables(tmp_path):
+    t = np.linspace(0, 5, 11)
+    rows = [(k, float(t[k]), 0.3, float(t[k]) * 1e-6, 0.3, 0.0, 0.0, 0.0, 5, 0) for k in range(t.size)]
+    synth.write_gamry_dta(tmp_path / "ca.dta", "CHRONOA", "Amperometry", tables=[("CURVE", GAMRY_CV_COLS, GAMRY_CV_UNITS, rows)], decimal=",")
+    assert np.allclose(readers.load(tmp_path / "ca.dta").curves[0].y, t)
+    synth.write_gamry_dta(tmp_path / "empty.dta", "CV", "CV")
+    with pytest.raises(ValueError, match="no curves"):
+        readers.load(tmp_path / "empty.dta")
+
+
+def test_a_dta_that_is_not_a_gamry_file_is_not_claimed(tmp_path):
+    (tmp_path / "x.dta").write_text("just some text\n1 2 3\n", encoding="utf-8")
+    assert readers.pick(tmp_path / "x.dta") is None

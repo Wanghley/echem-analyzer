@@ -71,3 +71,21 @@ def cv_scan(nu: float, ip_slope: float, e0=0.2, sep=0.07):
     up = np.r_[ip * np.exp(-0.5 * ((e_up - (e0 + sep / 2)) / 0.04) ** 2), np.zeros_like(e_up)]
     down = np.r_[np.zeros_like(e_up), -ip * np.exp(-0.5 * ((e_up[::-1] - (e0 - sep / 2)) / 0.04) ** 2)]
     return e, up + down
+
+
+# --------------------------------------------------------------------------- other instruments
+# Written from the vendors' file descriptions, not copied from real instrument files: they prove the readers agree with
+# the layout described, not that every firmware writes exactly this.
+
+def write_gamry_dta(path: Path, tag: str, title: str, quants: dict | None = None, tables=(), decimal: str = ".") -> None:
+    """A Gamry Framework .DTA: header lines, then (NAME, columns, units, rows) tables whose lines start with a tab.
+
+    quants maps a header key to (value, label)."""
+    num = lambda v: (f"{v:.6E}" if isinstance(v, float) else str(v)).replace(".", decimal)               # noqa: E731
+    lines = ["EXPLAIN\t", f"TAG\t{tag}", f"TITLE\tLABEL\t{title}\tTest &Identifier", "DATE\tLABEL\t11/5/2026\tDate",
+             "TIME\tLABEL\t10:30:00\tTime", "PSTAT\tPSTAT\tREF600-12345\tPotentiostat"]
+    lines += [f"{k}\tQUANT\t{v}\t{label}" for k, (v, label) in (quants or {}).items()]
+    for name, cols, units, rows in tables:
+        lines += [f"{name}\tTABLE\t{len(rows)}\tCurve", "\t" + "\t".join(cols), "\t" + "\t".join(units)]
+        lines += ["\t" + "\t".join(num(v) for v in r) for r in rows]
+    path.write_bytes(("\r\n".join(lines) + "\r\n").encode("latin-1"))

@@ -98,3 +98,8 @@ def _is_palmsens_csv(head: str) -> bool:
 
 register(Reader("csv", "PalmSens PSTrace CSV", (".csv",), _is_palmsens_csv, io_palmsens.load_csv))
 register(Reader("pssession", "PalmSens PSTrace session", (".pssession",), lambda head: True, io_palmsens.load_pssession))
+
+
+# --------------------------------------------------------------------------- other instruments
+# Each module registers its own reader when imported (they need Reader and register, defined above).
+from . import gamry  # noqa: E402,F401
