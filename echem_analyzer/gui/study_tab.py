@@ -20,6 +20,7 @@ from ..models import Response
 from ..prefs import prefs
 from .mpl_canvas import PlotWidget
 from .session import Session
+from .devices_tab import DevicesPanel
 from .ui_kit import Card, KpiCard, Notice, Splitter, hint, persist_splitters
 
 ALL_GROUPS = "All electrodes (pooled)"
@@ -917,12 +918,13 @@ class StudyTab(QWidget):
         self.selectivity = SelectivityPanel(session)
         self.recovery = RecoveryPanel(session, self.calibration)
         self.temperature = TemperaturePanel(session)
+        self.devices = DevicesPanel(session)
         self.tabs = QTabWidget()
         self.tabs.setObjectName("SubTabs")
         self.tabs.setDocumentMode(True)
         for w, name in ((self.responses, "Responses"), (self.calibration, "Calibration"), (self.repro, "Reproducibility"),
                         (self.stability, "Stability"), (self.selectivity, "Selectivity"), (self.recovery, "Recovery"),
-                        (self.temperature, "Temperature")):             # last, so a saved tab index still points at the same tab
+                        (self.temperature, "Temperature"), (self.devices, "Devices")):     # last, so a saved tab index still points at the same tab
             self.tabs.addTab(w, name)
         lay = QVBoxLayout(self)
         lay.setContentsMargins(16, 12, 16, 12)
@@ -933,6 +935,7 @@ class StudyTab(QWidget):
         for p in (self.calibration, self.repro, self.stability, self.selectivity, self.temperature):
             p.refresh()
         self.responses.rebuild()
+        self.devices.rebuild()
         self.recovery.recompute()
 
     def get_state(self) -> dict:
