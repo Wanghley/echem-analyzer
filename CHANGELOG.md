@@ -5,6 +5,17 @@ uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`, tagged `vM
 
 ## [Unreleased]
 
+### Added
+- **More instruments.** Gamry `.DTA`, CH Instruments `.txt`, BioLogic EC-Lab `.mpt` and Autolab Nova exports are read next to PalmSens files:
+  CV (one curve per cycle), LSV, DPV, SWV, chronoamperometry, open-circuit potential and impedance, in the app's units. A file is
+  recognised by what it contains, so a `.txt` from one instrument is not mistaken for another's. **These four readers are preview:** they
+  were written from the manufacturers' file descriptions and tested on synthetic files only.
+- A file that has no reader but is a table of numbers (including `.xlsx`) opens the import dialog when dropped or opened, instead of being rejected.
+- A CV file that does not state its scan rate gets one estimated from its time and potential columns, and says so.
+
+### Changed
+- Adding a folder lists only files an instrument reader recognises, so a stray `results.csv` or `notes.txt` is no longer reported as a load error.
+
 ## [0.5.2] - 2026-11-07
 
 The update check works in the installed app.

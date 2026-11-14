@@ -5,7 +5,7 @@
 <h1 align="center">Echem Analyzer</h1>
 
 <div align="center">
-  <strong>Sensor electrochemistry analysis for PalmSens data.</strong><br>
+  <strong>Sensor electrochemistry analysis for PalmSens, Gamry, CH Instruments, BioLogic and Autolab data.</strong><br>
   From raw curves to calibration, LOD/LOQ and electrode studies, and a PDF report or Excel workbook with the data, setup, results and plots together.
 </div>
 
@@ -40,7 +40,7 @@
 
 ## ✨ Highlights
 
-- **Any PalmSens measurement.** Reads PSTrace `.csv` and `.pssession` exports (every measurement in a session, including runs never exported), and any x–y table through *Import table…*.
+- **Your instrument's files.** Reads PalmSens PSTrace `.csv` / `.pssession` (every measurement in a session, including runs never exported), Gamry `.DTA`, CH Instruments `.txt`, BioLogic EC-Lab `.mpt` and Autolab Nova exports, and any other x–y table through *Import table…* (it opens by itself when you drop one).
 - **From curve to figure of merit.** Standard addition with a 95 % interval on C<sub>x</sub>, calibration with model comparison (linear, Nernstian, Michaelis–Menten, Hill), LOD/LOQ from the residual, the baseline noise or blank replicates, and a linear-range finder.
 - **Whole sensor studies.** Reproducibility between electrodes, stability over time, selectivity and spike recovery, from one Responses table.
 - **Reports you can hand over.** A **PDF** or an **Excel workbook** (with native, editable charts) built from the analysis you see on screen, and one-file **`.echemproj` projects** that hold the raw curves, every setting and the plots.
@@ -62,7 +62,7 @@
 | **Sensor study** | calibration, reproducibility, stability, selectivity, recovery across measurements |
 
 > [!WARNING]
-> **Not verified on real files:** the DPV / SWV / LSV / EIS / OCP / chronocoulometry parsers and the PalmSens method ids were built from the file format and tested on synthetic data with known answers only, and the EIS layout of `.pssession` is a best guess. If a file is misread, use the technique override or *Import table…*, and check your first real result by hand.
+> **Not verified on real files:** the DPV / SWV / LSV / EIS / OCP / chronocoulometry parsers and the PalmSens method ids were built from the file format and tested on synthetic data with known answers only, and the EIS layout of `.pssession` is a best guess. The Gamry, CH Instruments, BioLogic and Autolab readers are **preview**: written from the manufacturers' file descriptions and tested on synthetic files. If a file is misread, use the technique override or *Import table…*, and check your first real result by hand.
 
 ## 🖼️ A look around
 
@@ -132,7 +132,7 @@ uv sync
 uv run python -m echem_analyzer            # or: ./run.command, then drag files or a project onto the window
 ```
 
-Then drop PalmSens `.csv` or `.pssession` files onto the window (or a `.echemproj` project) and follow the topic tiles on the start page. `python -m echem_analyzer --version` prints the version; `--selftest` analyses a synthetic calibration, writes a PDF, a workbook and a project and draws every tab without a display.
+Then drop instrument files (`.csv`, `.pssession`, `.dta`, `.txt`, `.mpt`) onto the window (or a `.echemproj` project) and follow the topic tiles on the start page. `python -m echem_analyzer --version` prints the version; `--selftest` analyses a synthetic calibration, writes a PDF, a workbook and a project and draws every tab without a display.
 
 ## 📚 Documentation
 

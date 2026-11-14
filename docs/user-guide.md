@@ -11,9 +11,16 @@ Cottrell/Anson) → *Add to study* → **Sensor study** (Responses table; calibr
 range; reproducibility between electrodes; stability over time; selectivity; spike recovery). **Electrode** does scan-rate
 (Randles–Sevcik ECSA, Laviron) and Cdl studies from CV series. PDF, Excel and project snapshots include all of it.
 
+**Instrument files.** PalmSens `.csv` / `.pssession`, Gamry `.DTA`, CH Instruments `.txt`, BioLogic `.mpt` and Autolab Nova
+exports are recognised by what they contain (a `.txt` can come from several instruments), not only by their suffix. A table that
+no reader recognises opens the import dialog when you drop it on the window. CV files that hold all cycles in one trace are cut
+into scans at their reversal points; when a file does not state the scan rate, one is estimated from the time and potential
+columns and marked as estimated.
+
 **Not verified on real files:** the DPV/SWV/LSV/EIS/OCP/CC parsers and PalmSens method ids were built from the format and
-tested on synthetic data with known answers only; the EIS layout of `.pssession` is a best guess. Use the technique override
-and *Import table…* if a file is misread, and check the first real result by hand.
+tested on synthetic data with known answers only; the EIS layout of `.pssession` is a best guess. The Gamry, CH Instruments,
+BioLogic and Autolab readers are **preview**: written from the manufacturers' file descriptions and tested on synthetic files.
+Use the technique override and *Import table…* if a file is misread, and check the first real result by hand.
 
 ## Resizable panels
 

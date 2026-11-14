@@ -213,7 +213,7 @@ class WelcomePage(QWidget):
         lay.addSpacing(4)
 
         self.btn_project = _ActionRow("Open a project", "Continue where you left off", "folder-open", _native("Ctrl+O"), primary=True)
-        self.btn_files = _ActionRow("Add data files", "PalmSens .csv and .pssession exports", "plus", _native("Ctrl+Shift+O"))
+        self.btn_files = _ActionRow("Add data files", "PalmSens, Gamry, CHI, BioLogic and Autolab files", "plus", _native("Ctrl+Shift+O"))
         self.btn_folder = _ActionRow("Add a data folder", "Everything the app can read in a folder", "folder", _native("Ctrl+Alt+O"))
         for b in (self.btn_project, self.btn_files, self.btn_folder):
             lay.addWidget(b)

@@ -474,7 +474,7 @@ class CATab(QWidget):
 
     def _show_empty(self) -> None:
         self.ax_ca.clear()
-        self.ax_ca.text(0.5, 0.5, "Open a PalmSens .csv or .pssession file\n(File → Add data files…, or drag it onto this window)",
+        self.ax_ca.text(0.5, 0.5, "Open a data file\n(File → Add data files…, or drag it onto this window)",
                         ha="center", va="center", transform=self.ax_ca.transAxes, color="#6b7280")
         self.ax_ca.set_axis_off()
         self.ca_plot.redraw()

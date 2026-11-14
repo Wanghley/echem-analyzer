@@ -374,7 +374,7 @@ class CVCycleTab(QWidget):
 
     def _show_empty(self) -> None:
         self.ax_cv.clear()
-        self.ax_cv.text(0.5, 0.5, "No cyclic-voltammetry runs loaded.\nOpen a PalmSens file that contains CV scans.",
+        self.ax_cv.text(0.5, 0.5, "No cyclic-voltammetry runs loaded.\nOpen a data file that contains CV scans.",
                         ha="center", va="center", transform=self.ax_cv.transAxes, color="#6b7280")
         self.ax_cv.set_axis_off()
         self.cv_plot.redraw()

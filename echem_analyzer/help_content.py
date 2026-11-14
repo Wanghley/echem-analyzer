@@ -44,8 +44,8 @@ TOPICS: list[Topic] = [
 <p>Echem Analyzer turns instrument files into <b>numbers you can defend</b>: sensitivity, limit of detection, linear range,
 reproducibility, stability, selectivity and electrode properties, with the plots and a report to go with them.</p>
 <ol>
-<li><b>Load data.</b> Drop PalmSens <code>.csv</code> / <code>.pssession</code> files, a project, or a whole folder onto the window,
-or use <i>Add data</i>. Data from other instruments comes in through <i>File ▸ Import table…</i>
+<li><b>Load data.</b> Drop instrument files (PalmSens, Gamry, CH Instruments, BioLogic, Autolab), a project, or a whole folder onto
+the window, or use <i>Add data</i>. Any other table of numbers opens the import dialog, where you choose the columns
 (see <a href="topic:formats">Files and formats</a>).</li>
 <li><b>Check the technique</b> of each curve in <b>Measurements</b>. It is recognised from the method id or the title; correct it
 in the table if it is wrong.</li>
@@ -70,9 +70,14 @@ Every plot in a report is drawn on a white background in your chosen plot style 
 """ + _table([
         ("<code>.csv</code>", "PalmSens PSTrace export (UTF-16). Every curve in the file. CV exports carry <b>no scan rate</b>."),
         ("<code>.pssession</code>", "PSTrace session: every measurement including those never exported, plus the method (scan rate, vertices, step)."),
+        ("<code>.dta</code> <i>(preview)</i>", "Gamry Framework: CV (one curve per cycle), LSV, DPV, SWV, chronoamperometry, open circuit and EIS."),
+        ("<code>.txt</code> <i>(preview)</i>", "CH Instruments text export (CV is cut into scans at its reversal points), or an Autolab Nova export. "
+                                                "The program tells them apart by their first lines."),
+        ("<code>.mpt</code> <i>(preview)</i>", "BioLogic EC-Lab ASCII export: CV (cycles from the cycle number), chronoamperometry, open circuit and EIS."),
         ("<code>.echemproj</code>", "A project saved by this app: raw curves, settings, responses, plots, window state."),
-        ("any table", "<i>File ▸ Import table…</i> reads CSV / TXT / TSV / XLSX with delimiter and decimal-comma detection, header and "
-                      "units (mV, nA, kHz, kΩ… are converted to V, µA, Hz, Ω). For EIS pick Z′ and Z″ (or −Z″) columns."),
+        ("any table", "A table no reader recognises (CSV / TXT / TSV / XLSX) opens the import dialog by itself, or use <i>File ▸ Import table…</i>. "
+                      "It detects the delimiter, decimal comma, header and units (mV, nA, kHz, kΩ… are converted to V, µA, Hz, Ω). "
+                      "For EIS pick Z′ and Z″ (or −Z″) columns."),
     ], ("Format", "Notes")) + """
 <h3>Technique recognition</h3>
 <p>First the instrument's method id, then words in the title (impedance, DPV, open circuit…). If a curve is misread, change its
@@ -82,6 +87,9 @@ technique in <b>Measurements</b>; the analyses offered follow.</p>
 were built from the file format and checked on synthetic data with known answers; the EIS layout inside <code>.pssession</code>
 is a best guess. If the first real file is misread, use the technique override or <i>Import table…</i>, and check the first
 result by hand.</p>
+<p>The readers marked <b>preview</b> (Gamry, CH Instruments, BioLogic, Autolab) were written from the manufacturers' file
+descriptions and checked only on synthetic files. Open the first real file of each kind next to the instrument's own software and
+compare a curve; a CV whose scan rate the file does not state gets one estimated from its time and potential columns, and says so.</p>
 """),
     Topic("techniques", "Analyses", "Techniques and what is measured", """
 <h2>Techniques and what is measured</h2>
