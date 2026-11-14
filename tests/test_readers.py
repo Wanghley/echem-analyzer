@@ -228,3 +228,84 @@ def test_chi_impedance_is_oriented_whatever_the_sign_of_z_imag(tmp_path, sign):
 def test_chi_a_text_table_without_the_instrument_lines_is_not_claimed(tmp_path):
     (tmp_path / "plain.txt").write_text("Potential/V, Current/A\n\n0.1, 1e-6\n0.2, 2e-6\n", encoding="utf-8")
     assert readers.pick(tmp_path / "plain.txt") is None                       # a plain table belongs to the Import table
+
+
+# ===================================================================== BioLogic EC-Lab .mpt
+
+MPT_CV_COLS = ["mode", "ox/red", "error", "time/s", "control/V", "Ewe/V", "<I>/mA", "cycle number"]
+
+
+def _mpt_cv_rows(cycles=2, rate=0.1):
+    e1, i1 = synth.cv_scan(1.0, 3.0)
+    rows, t0 = [], 0.0
+    for cyc in range(cycles):
+        for k in range(e1.size):
+            rows.append((2, 1, 0, t0 + k * 0.005 / rate, float(e1[k]), float(e1[k]), float(i1[k] * 1e-3), cyc))
+        t0 += e1.size * 0.005 / rate
+    return rows, e1, i1
+
+
+def test_biologic_cv_is_split_by_the_cycle_number_column_and_converted_to_microamps(tmp_path):
+    rows, e, i_ua = _mpt_cv_rows()
+    synth.write_biologic_mpt(tmp_path / "cv.mpt", "Cyclic Voltammetry", MPT_CV_COLS, rows,
+                             {"Ei (V)": "0.000", "E1 (V)": "0.600", "E2 (V)": "-0.200", "Scan rate (mV/s)": "100.000"})
+    assert readers.pick(tmp_path / "cv.mpt").key == "biologic"
+    f = readers.load(tmp_path / "cv.mpt")
+    assert f.fmt == "biologic" and [c.scan for c in f.curves] == [1, 2] and {c.kind for c in f.curves} == {"CV"}
+    c = f.curves[1]
+    assert c.n == e.size and np.allclose(c.x, e) and np.allclose(c.y, i_ua, rtol=1e-5, atol=1e-6) and c.y_unit == "µA"
+    assert c.meta["scan_rate"] == pytest.approx(0.1) and (c.meta["e_begin"], c.meta["e_vtx1"], c.meta["e_vtx2"]) == (0.0, 0.6, -0.2)
+    assert c.meta["device"].startswith("SP-150") and c.meta["timestamp"].startswith("11/05/2026")
+
+
+def test_biologic_estimates_the_scan_rate_when_the_settings_do_not_state_it(tmp_path):
+    rows, _, _ = _mpt_cv_rows(cycles=1)
+    synth.write_biologic_mpt(tmp_path / "cv.mpt", "Cyclic Voltammetry", MPT_CV_COLS, rows)
+    c = readers.load(tmp_path / "cv.mpt").curves[0]
+    assert c.meta["scan_rate"] == pytest.approx(0.1, rel=0.02) and "estimated" in c.meta["scan_rate_source"]
+
+
+def test_biologic_chronoamperometry_is_not_mistaken_for_chronocoulometry(tmp_path):
+    t = np.linspace(0, 30, 61)
+    rows = [(2, 0, float(t[k]), 0.3, float((1.5 + 0.2 * (t[k] > 15)) * 1e-3), 0) for k in range(t.size)]
+    synth.write_biologic_mpt(tmp_path / "ca.mpt", "Chronoamperometry / Chronocoulometry",
+                             ["mode", "error", "time/s", "Ewe/V", "<I>/mA", "cycle number"], rows)
+    c = readers.load(tmp_path / "ca.mpt").curves[0]
+    assert c.kind == "CA" and c.y[0] == pytest.approx(1.5) and c.meta["E"] == pytest.approx(0.3) and c.meta["dt"] == pytest.approx(0.5)
+
+
+def test_biologic_open_circuit_voltage_and_a_file_with_no_technique_name(tmp_path):
+    t = np.linspace(0, 60, 61)
+    v = 0.2 + 1e-3 * np.exp(-t / 8)
+    synth.write_biologic_mpt(tmp_path / "ocv.mpt", "Open Circuit Voltage", ["mode", "error", "time/s", "Ewe/V"],
+                             [(0, 0, float(t[k]), float(v[k])) for k in range(t.size)])
+    c = readers.load(tmp_path / "ocv.mpt").curves[0]
+    assert c.kind == "OCP" and np.allclose(c.y, v) and c.y_unit == "V"
+    rows, _, _ = _mpt_cv_rows(cycles=2)
+    synth.write_biologic_mpt(tmp_path / "anon.mpt", "", MPT_CV_COLS, rows)                  # the columns alone say it is a CV
+    assert {c.kind for c in readers.load(tmp_path / "anon.mpt").curves} == {"CV"}
+
+
+def test_biologic_impedance_one_spectrum_per_cycle_in_the_apps_sign_convention(tmp_path):
+    f_hz, z = synth.randles_spectrum()
+    cols = ["freq/Hz", "Re(Z)/Ohm", "-Im(Z)/Ohm", "|Z|/Ohm", "Phase(Z)/deg", "time/s", "cycle number"]
+    rows = [(float(f), float(zz.real), float(-zz.imag), float(abs(zz)), 0.0, float(k), cyc)
+            for cyc in (0, 1) for k, (f, zz) in enumerate(zip(f_hz, z))]
+    synth.write_biologic_mpt(tmp_path / "eis.mpt", "Potentio Electrochemical Impedance Spectroscopy", cols, rows)
+    f = readers.load(tmp_path / "eis.mpt")
+    assert len(f.curves) == 2 and {c.kind for c in f.curves} == {"EIS"}
+    c = f.curves[0]
+    assert np.allclose(c.extra["freq"], f_hz) and np.allclose(c.extra["zre"], z.real, rtol=1e-5) and (c.extra["zim"] < 0).all()
+
+
+def test_biologic_tolerates_decimal_commas_and_a_miscounted_header(tmp_path):
+    rows, e, _ = _mpt_cv_rows(cycles=1)
+    for off in (-1, 0, 1):
+        synth.write_biologic_mpt(tmp_path / f"cv{off}.mpt", "Cyclic Voltammetry", MPT_CV_COLS, rows, decimal=",", header_count_error=off)
+        c = readers.load(tmp_path / f"cv{off}.mpt").curves[0]
+        assert np.allclose(c.x, e), off
+
+
+def test_an_mpt_without_the_ec_lab_line_is_not_claimed(tmp_path):
+    (tmp_path / "x.mpt").write_text("time/s\tEwe/V\n0\t1\n", encoding="utf-8")
+    assert readers.pick(tmp_path / "x.mpt") is None

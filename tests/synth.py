@@ -106,3 +106,16 @@ def write_chi_txt(path: Path, technique: str, columns: list[str], rows, params: 
     lines += ["", ", ".join(columns), ""]
     lines += [", ".join(_chi_num(v) for v in r) for r in rows]
     path.write_bytes(("\r\n".join(lines) + "\r\n").encode("latin-1"))
+
+
+def write_biologic_mpt(path: Path, technique: str, columns: list[str], rows, settings: dict | None = None,
+                       decimal: str = ".", header_count_error: int = 0) -> None:
+    """A BioLogic EC-Lab .mpt: magic line, header count, settings, then tab-separated columns and rows.
+
+    header_count_error shifts the declared "Nb header lines" to check that the reader does not depend on it blindly."""
+    head = ["EC-Lab ASCII FILE", "", "", "Device : SP-150 (SN 1234)", "Acquisition started on : 11/05/2026 10:30:11", technique]
+    head += [f"{k}\t{v}" for k, v in (settings or {}).items()]
+    head[1] = f"Nb header lines : {len(head) + 1 + header_count_error}"
+    num = lambda v: (f"{v:.6e}" if isinstance(v, float) else str(v)).replace(".", decimal)                  # noqa: E731
+    lines = head + ["\t".join(columns)] + ["\t".join(num(v) for v in r) for r in rows]
+    path.write_bytes(("\r\n".join(lines) + "\r\n").encode("latin-1"))
