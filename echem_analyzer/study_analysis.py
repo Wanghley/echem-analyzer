@@ -13,6 +13,7 @@ from typing import Optional, Sequence
 import numpy as np
 
 from . import calibration as cal
+from . import potentiometry as pot
 from . import studies
 from .models import Response
 
@@ -93,6 +94,10 @@ class CalibrationOptions:
     r2_min: float = 0.99
     dev_max: float = 0.10
     normalise: str = "none"                # none | delta | percent: response as the change from each electrode's own blank
+    potentiometric: bool = False           # an ion-selective electrode: Nernstian region, slope vs theory, IUPAC detection limit
+    z: int = 1                             # charge of the ion (signed: +1 for Na⁺, −1 for Cl⁻)
+    temp_c: float = 25.0                   # temperature the Nernstian slope is judged at
+    ionic_strength: float = 0.0            # M, constant background of the standards (0 = treat concentration as activity)
 
 
 @dataclass
@@ -129,6 +134,9 @@ class CalibrationStudy:
     loq: float = NAN
     samples: list[SampleResult] = field(default_factory=list)
     recovery: Optional[studies.RecoverySummary] = None
+    ise: Optional[pot.ISEFit] = None                                 # potentiometric mode: the Nernstian region and detection limit
+    gamma: float = 1.0                                               # activity coefficient of the ion at the background ionic strength
+    e0_mv: float = NAN                                               # standard potential: E at an activity of 1 M
     diagnostics: Optional[cal.PointDiagnostics] = None               # straight-line models only
     fit_index: np.ndarray = field(default_factory=lambda: np.array([], int))     # index into x / y / labels of each point the fit used
     warnings: list[str] = field(default_factory=list)
@@ -181,6 +189,53 @@ def normalise_values(mode: str, standards: Sequence[Response], blanks: Sequence[
             f"Δ{y_unit}" if mode == "delta" else "%", warnings)
 
 
+def _ise_calibration(out: CalibrationStudy, opts: CalibrationOptions) -> bool:
+    """The ion-selective-electrode route: the Nernstian region, the slope against theory and the IUPAC detection limit.
+
+    Fills the study the way a log-linear calibration would (so samples, intervals, diagnostics and the report work unchanged), but
+    the fit covers only the Nernstian region and the limits come from where the plateau and the Nernstian line cross.
+    """
+    ise = pot.fit_ise(out.x, out.y, opts.z, opts.temp_c)
+    out.ise = ise
+    if not ise.ok:
+        out.warnings.append(ise.message or "The electrode calibration could not be fitted.")
+        return False
+    out.model, out.fit, out.fits = cal.LOGLIN, ise.fit, {cal.LOGLIN: ise.fit}
+    out.fit_index = np.asarray(ise.index, int)
+    out.gamma = pot.activity_coefficient(opts.z, opts.ionic_strength, opts.temp_c) if opts.ionic_strength > 0 else 1.0
+    out.e0_mv = ise.intercept - ise.slope * math.log10(out.gamma * CONC_FACTORS.get(out.conc_unit, 1.0))
+    resid = ise.fit.residuals
+    sigma, source = (float(np.std(out.blanks, ddof=1)), f"blank (n = {out.blanks.size})") if out.blanks.size >= 3 else \
+        (float(np.sqrt(np.sum(resid ** 2) / max(len(resid) - 2, 1))), "fit residuals")
+    levels = len(np.unique(np.round(np.log10(out.x[ise.index]), 9)))
+    out.fom = cal.FiguresOfMerit(sensitivity=ise.slope, sensitivity_se=ise.slope_se, intercept=ise.intercept, r2=ise.r2, sigma=sigma,
+                                 sigma_source=source, lod=ise.lod if ise.lod_found else NAN, range_low=ise.c_low, range_high=ise.c_high,
+                                 n_range=levels, n_points=len(out.x), fit=ise.fit)
+    out.sensitivity, out.sensitivity_unit = ise.slope, f"{out.y_unit}/decade"
+    out.lod = out.fom.lod
+    if out.y_unit != "mV":
+        out.warnings.append(f"A potentiometric analysis expects potentials in mV or V, but the responses are in {out.y_unit or 'no unit'}: "
+                            "the comparison with the Nernstian slope is meaningless.")
+    out.warnings += pot.slope_remarks(ise, opts.z, opts.temp_c)
+    if ise.message:
+        out.warnings.append(ise.message)
+    return True
+
+
+def _ise_sample_remarks(s: SampleResult, ise: pot.ISEFit, unit: str) -> list[str]:
+    """What an electrode reading means given where it falls: under the detection limit, in the curved foot, or above the region."""
+    where = f"Sample “{s.label}” reads {cal_g(s.conc)} {unit}"
+    if ise.lod_found and s.conc < ise.lod:
+        return [f"{where}, below the detection limit ({cal_g(ise.lod)} {unit}): report it as below the limit, not as a value."]
+    if s.conc < ise.c_low:
+        edge = f"the detection limit ({cal_g(ise.lod)}) and " if ise.lod_found else ""
+        return [f"{where}, between {edge}the start of the Nernstian region ({cal_g(ise.c_low)} {unit}): the response is curved there, "
+                "so the value is only approximate."]
+    if s.conc > ise.c_high:
+        return [f"{where}, above the Nernstian region (up to {cal_g(ise.c_high)} {unit}): the value is an extrapolation."]
+    return []
+
+
 def run_calibration(responses: Sequence[Response], opts: CalibrationOptions) -> CalibrationStudy:
     out = CalibrationStudy(opts)
     std = [r for r in select(responses, opts.quantity, opts.condition, ("standard",), opts.group, opts.time) if r.conc is not None]
@@ -208,43 +263,52 @@ def run_calibration(responses: Sequence[Response], opts: CalibrationOptions) -> 
     if opts.time is None and len({None if r.time is None else float(r.time) for r in std}) > 1:
         out.warnings.append("Standards measured at different times are pooled: choose a time in the Time setting to calibrate one session.")
 
-    wanted = {"linear": [cal.LINEAR], "loglinear": [cal.LOGLIN], "michaelis": [cal.MICHAELIS], "hill": [cal.HILL]}
-    all_fits = cal.fit_all(out.x, out.y)
-    out.fits = {k: v for k, v in all_fits.items()}
-    key = opts.model if opts.model in wanted else (cal.best_model(all_fits) or cal.LINEAR)
-    out.model, out.fit = key, all_fits[key]
-    if not out.fit.ok:
-        out.warnings.append(f"{cal.MODEL_LABELS[key]}: {out.fit.message}")
-        return out
-    out.fit_index = np.flatnonzero(out.x > 0) if key == cal.LOGLIN else np.arange(len(out.x))
-    out.diagnostics = cal.diagnostics(out.fit)
+    if opts.potentiometric:
+        if out.y_unit == "V":                                   # the electrode routines work in mV
+            out.y, out.blanks, out.y_unit = out.y * 1000.0, out.blanks * 1000.0, "mV"
+            sample_values = [v * 1000.0 for v in sample_values]
+        if not _ise_calibration(out, opts):
+            return out
+        key, all_fits = cal.LOGLIN, out.fits
+    else:
+        wanted = {"linear": [cal.LINEAR], "loglinear": [cal.LOGLIN], "michaelis": [cal.MICHAELIS], "hill": [cal.HILL]}
+        all_fits = cal.fit_all(out.x, out.y)
+        out.fits = {k: v for k, v in all_fits.items()}
+        key = opts.model if opts.model in wanted else (cal.best_model(all_fits) or cal.LINEAR)
+        out.model, out.fit = key, all_fits[key]
+        if not out.fit.ok:
+            out.warnings.append(f"{cal.MODEL_LABELS[key]}: {out.fit.message}")
+            return out
+        out.fit_index = np.flatnonzero(out.x > 0) if key == cal.LOGLIN else np.arange(len(out.x))
+    out.diagnostics = cal.diagnostics(out.fit, min_residual=pot.TRIM_MV if opts.potentiometric else 0.0)
     for i, why in out.flagged_points():
         out.warnings.append(f"Standard “{out.labels[i]}” ({cal_g(out.x[i])} {out.conc_unit}): {why}. Check the measurement before relying on the fit.")
 
-    fom = cal.figures_of_merit(out.x, out.y, blank=out.blanks if out.blanks.size else None, k_lod=opts.k_lod,
-                               k_loq=opts.k_loq, sigma_from=opts.sigma_from, restrict_to_range=opts.restrict_range,
-                               r2_min=opts.r2_min, dev_max=opts.dev_max)
-    out.fom = fom
-    out.warnings += fom.warnings
-    if key == cal.LINEAR:
-        out.sensitivity, out.lod, out.loq = fom.sensitivity, fom.lod, fom.loq
-        out.sensitivity_unit = f"{out.y_unit}/{out.conc_unit}"
-    elif key == cal.LOGLIN:
-        out.sensitivity = out.fit.p("slope")
-        out.sensitivity_unit = f"{out.y_unit}/decade"
-        if out.y_unit in ("mV", "V"):
-            theory = cal.nernst_slope(1) / (1000.0 if out.y_unit == "V" else 1.0)
-            out.warnings.append(f"Nernstian slope for z = 1 is {theory:.4g} {out.y_unit}/decade (z = 2: {theory / 2:.4g}).")
-        out.warnings.append("A log-linear response has no single linear LOD: use the linear-range / intersection method.")
-    elif key == cal.MICHAELIS:
-        out.sensitivity = out.fit.p("ymax") / out.fit.p("K")
-        out.sensitivity_unit = f"{out.y_unit}/{out.conc_unit} (initial slope ymax/K)"
-        sigma = fom.sigma
-        if math.isfinite(sigma) and out.sensitivity:
-            out.lod, out.loq = opts.k_lod * sigma / abs(out.sensitivity), opts.k_loq * sigma / abs(out.sensitivity)
-    else:
-        out.sensitivity_unit = ""
-        out.warnings.append("Hill model: report K (half-saturation) and n; no single sensitivity applies.")
+    if not opts.potentiometric:                                 # an electrode calibration has its figures of merit already
+        fom = cal.figures_of_merit(out.x, out.y, blank=out.blanks if out.blanks.size else None, k_lod=opts.k_lod, k_loq=opts.k_loq,
+                                   sigma_from=opts.sigma_from, restrict_to_range=opts.restrict_range, r2_min=opts.r2_min,
+                                   dev_max=opts.dev_max)
+        out.fom = fom
+        out.warnings += fom.warnings
+        if key == cal.LINEAR:
+            out.sensitivity, out.lod, out.loq = fom.sensitivity, fom.lod, fom.loq
+            out.sensitivity_unit = f"{out.y_unit}/{out.conc_unit}"
+        elif key == cal.LOGLIN:
+            out.sensitivity = out.fit.p("slope")
+            out.sensitivity_unit = f"{out.y_unit}/decade"
+            if out.y_unit in ("mV", "V"):
+                theory = cal.nernst_slope(1) / (1000.0 if out.y_unit == "V" else 1.0)
+                out.warnings.append(f"Nernstian slope for z = 1 is {theory:.4g} {out.y_unit}/decade (z = 2: {theory / 2:.4g}).")
+            out.warnings.append("A log-linear response has no single linear LOD: use the linear-range / intersection method.")
+        elif key == cal.MICHAELIS:
+            out.sensitivity = out.fit.p("ymax") / out.fit.p("K")
+            out.sensitivity_unit = f"{out.y_unit}/{out.conc_unit} (initial slope ymax/K)"
+            sigma = fom.sigma
+            if math.isfinite(sigma) and out.sensitivity:
+                out.lod, out.loq = opts.k_lod * sigma / abs(out.sensitivity), opts.k_loq * sigma / abs(out.sensitivity)
+        else:
+            out.sensitivity_unit = ""
+            out.warnings.append("Hill model: report K (half-saturation) and n; no single sensitivity applies.")
 
     # quantify samples with the chosen model
     use_fit = out.fit if out.fit.ok else all_fits[cal.LINEAR]
@@ -262,6 +326,8 @@ def run_calibration(responses: Sequence[Response], opts: CalibrationOptions) -> 
             s.recovery_pct = s.conc / s.expected * 100.0
         if not math.isfinite(s.conc):
             out.warnings.append(f"Sample “{s.label}”: the response is outside what the {cal.MODEL_LABELS[key]} model can invert.")
+        elif out.ise is not None:
+            out.warnings += _ise_sample_remarks(s, out.ise, out.conc_unit)
         out.samples.append(s)
     if out.samples and any(math.isfinite(s.recovery_pct) for s in out.samples):
         out.recovery = studies.recovery([(s.label, s.expected, s.conc) for s in out.samples if math.isfinite(s.recovery_pct)])

@@ -13,6 +13,7 @@ from dataclasses import dataclass, field
 from typing import Optional
 
 import numpy as np
+from scipy import stats
 
 from .calibration import ModelFit, fit_loglinear, nernst_slope
 
@@ -82,6 +83,9 @@ def _trim(u: np.ndarray, y: np.ndarray, mask: np.ndarray, end: str, min_levels: 
     each other (a true 59 mV/decade slope reads about 57).  Each end level is compared with the line fitted to the others; it
     goes when it is farther from it than ``TRIM_MV`` or ``TRIM_SIGMAS`` times the scatter of those others.  ``end`` is "low" or
     "high" (the end next to the corner); at least ``min_levels`` levels are always kept.
+
+    The line is a Theil–Sen line and the scatter a median absolute deviation, so that one wrong standard among the others cannot
+    widen the tolerance and leave the curved corner in the fit (which would also hide that standard from the diagnostics).
     """
     mask = mask.copy()
     while True:
@@ -93,9 +97,10 @@ def _trim(u: np.ndarray, y: np.ndarray, mask: np.ndarray, end: str, min_levels: 
         rest = mask & ~at_edge
         if rest.sum() < 2:
             return mask
-        slope, intercept = np.polyfit(u[rest], y[rest], 1)
-        resid = y[rest] - (slope * u[rest] + intercept)
-        scatter = float(np.sqrt(np.sum(resid ** 2) / (rest.sum() - 2))) if rest.sum() > 2 else 0.0
+        slope = stats.theilslopes(y[rest], u[rest])[0]
+        intercept = float(np.median(y[rest] - slope * u[rest]))     # not scipy's median(y) − slope·median(x): in a calibration y rises with x,
+        resid = y[rest] - (slope * u[rest] + intercept)             # so one wrong standard in the middle shifts median(y) and the whole line
+        scatter = 1.4826 * float(np.median(np.abs(resid - np.median(resid)))) if rest.sum() > 2 else 0.0
         deviation = abs(float(np.mean(y[at_edge])) - (slope * float(np.mean(u[at_edge])) + intercept))
         if deviation <= max(TRIM_MV, TRIM_SIGMAS * scatter):
             return mask

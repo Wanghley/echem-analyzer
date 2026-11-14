@@ -419,6 +419,7 @@ def study_calibration(fig, cs, p: Palette, logx: bool = False) -> None:
         ax.set_axis_off()
         return
     ok = cs.ok
+    logx = logx or (ok and cs.ise is not None)                 # an electrode answers to log(activity): always draw it that way
     if ok:
         gs = fig.add_gridspec(2, 1, height_ratios=[4, 1.1])
         ax, axr = fig.add_subplot(gs[0]), fig.add_subplot(gs[1], sharex=None)
@@ -444,15 +445,19 @@ def study_calibration(fig, cs, p: Palette, logx: bool = False) -> None:
             xs = np.logspace(np.log10(max(lo, 1e-12)), np.log10(hi), 200)
         else:
             xs = np.linspace(min(lo, 0.0) if cs.model == cal.LINEAR else lo, hi, 200)
-        ax.plot(xs, cs.fit.predict(xs), color=p.fit, lw=1.7, zorder=3)
-        if cs.fom and cs.fom.n_range and cs.model == cal.LINEAR:
-            ax.axvspan(cs.fom.range_low, cs.fom.range_high, color=p.window, alpha=0.14 if p.name == "light" else 0.2, lw=0, zorder=0)
-        text = [f"{cal.MODEL_LABELS[cs.model]}   R² = {cs.fit.r2:.4f}"]
-        if math.isfinite(cs.sensitivity):
-            text.append(f"S = {cs.sensitivity:.4g} {cs.sensitivity_unit}")
-        if math.isfinite(cs.lod):
-            text.append(f"LOD = {cs.lod:.3g} {cs.conc_unit}   LOQ = {cs.loq:.3g} {cs.conc_unit}")
-        ax.text(0.03, 0.97, "\n".join(text), transform=ax.transAxes, ha="left", va="top", fontsize=8.8, color=p.text)
+        shade = 0.14 if p.name == "light" else 0.2
+        if cs.ise is not None:
+            _draw_electrode_fit(ax, cs, xs, p, shade)
+        else:
+            ax.plot(xs, cs.fit.predict(xs), color=p.fit, lw=1.7, zorder=3)
+            if cs.fom and cs.fom.n_range and cs.model == cal.LINEAR:
+                ax.axvspan(cs.fom.range_low, cs.fom.range_high, color=p.window, alpha=shade, lw=0, zorder=0)
+            text = [f"{cal.MODEL_LABELS[cs.model]}   R² = {cs.fit.r2:.4f}"]
+            if math.isfinite(cs.sensitivity):
+                text.append(f"S = {cs.sensitivity:.4g} {cs.sensitivity_unit}")
+            if math.isfinite(cs.lod):
+                text.append(f"LOD = {cs.lod:.3g} {cs.conc_unit}   LOQ = {cs.loq:.3g} {cs.conc_unit}")
+            ax.text(0.03, 0.97, "\n".join(text), transform=ax.transAxes, ha="left", va="top", fontsize=8.8, color=p.text)
         axr.axhline(0, color=p.border_strong, lw=0.9)
         axr.plot(cs.fit.x, cs.fit.residuals, "o", color=p.trace, ms=4)
         for k, (i, _why) in enumerate(cs.flagged_points()):          # standards the diagnostics single out: a ring, on both axes
@@ -464,15 +469,37 @@ def study_calibration(fig, cs, p: Palette, logx: bool = False) -> None:
         if logx:
             axr.set_xscale("log")
         ax.tick_params(labelbottom=False)
-        axr.set_xlim(ax.get_xlim()) if not logx else None
     else:
         ax.set_xlabel(f"Concentration ({cs.conc_unit})")
     if logx:
         ax.set_xscale("log")
+    if ok:
+        axr.set_xlim(ax.get_xlim())                              # the residuals carry the x tick labels, so they must span the same range
     ax.set_ylabel(f"{cs.options.quantity} ({cs.y_unit})")
     ax.set_title(f"Calibration · {cs.options.condition}", loc="left", color=p.text)
     if len(colors) > 1 or (ok and cs.flagged_points()):
         ax.legend(loc="lower right", fontsize=8)
+
+
+def _draw_electrode_fit(ax, cs, xs, p: Palette, shade: float) -> None:
+    """An ion-selective electrode: the Nernstian region and its line, the flat part below it and the detection limit."""
+    ise = cs.ise
+    ax.plot(xs, cs.fit.predict(xs), color=p.fit, lw=1.0, ls="--", alpha=0.55, zorder=2)             # the line, carried on past the region
+    region = np.logspace(np.log10(ise.c_low), np.log10(ise.c_high), 120)
+    ax.plot(region, cs.fit.predict(region), color=p.fit, lw=1.9, zorder=3)
+    ax.axvspan(ise.c_low, ise.c_high, color=p.window, alpha=shade, lw=0, zorder=0)
+    if ise.plateau is not None:
+        flat = np.logspace(np.log10(float(np.min(cs.x))), np.log10(ise.lod if ise.lod_found else ise.c_low), 60)
+        ax.plot(flat, ise.plateau[0] * np.log10(flat) + ise.plateau[1], color=p.extrap, lw=1.4, ls="--", zorder=3)
+    if ise.lod_found:
+        ax.axvline(ise.lod, color=p.extrap, lw=1.0, ls=":", zorder=2)
+        ax.annotate(f"LOD {ise.lod:.3g}", (ise.lod, ax.get_ylim()[0]), xytext=(3, 6), textcoords="offset points", fontsize=8.2,
+                    color=p.extrap, rotation=90, va="bottom")
+    text = [f"Nernstian region   R² = {ise.r2:.4f}", f"S = {ise.slope:+.2f} mV/decade  ({ise.slope_pct:.0f} % of {ise.nernst:.1f})"]
+    if math.isfinite(cs.e0_mv):
+        text.append(f"E° = {cs.e0_mv:.1f} mV (a = 1 M)")
+    text.append(f"LOD = {ise.lod:.3g} {cs.conc_unit}" if ise.lod_found else "LOD below the lowest standard")
+    ax.text(0.03, 0.97, "\n".join(text), transform=ax.transAxes, ha="left", va="top", fontsize=8.8, color=p.text)
 
 
 def study_reproducibility(fig, rs, p: Palette) -> None:

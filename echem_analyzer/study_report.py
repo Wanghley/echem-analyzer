@@ -211,8 +211,27 @@ def _where(o: sa.CalibrationOptions) -> str:
                                   "all times" if o.time is None else ("no time set" if o.time == sa.NO_TIME else f"time = {g(o.time)}")))
 
 
+def _electrode_rows(cs: sa.CalibrationStudy) -> tuple[list[tuple[str, str]], list[tuple[str, str]]]:
+    o, ise = cs.options, cs.ise
+    settings = [("Quantity", f"{o.quantity} ({cs.y_unit})"), ("Selection", _where(o)),
+                ("Mode", f"ion-selective electrode, z = {o.z:+d}, {g(o.temp_c)} °C" + (f", background ionic strength {g(o.ionic_strength)} M (Davies)"
+                                                                                      if o.ionic_strength > 0 else ", concentration taken as activity")),
+                *([("Response", sa.NORMALISATIONS[o.normalise] + ", per electrode")] if o.normalise in ("delta", "percent") else []),
+                ("Concentration unit", cs.conc_unit)]
+    results = [("Standards", f"{len(cs.x)} points at {len(set(cs.x.tolist()))} concentrations"),
+               ("Slope", f"{ise.slope:+.2f} ± {g(ise.slope_se, 2)} mV/decade ({ise.slope_pct:.1f} % of the theoretical {ise.nernst:.2f})"),
+               ("Nernstian region", f"{g(ise.c_low, 3)} – {g(ise.c_high, 3)} {cs.conc_unit} ({cs.fom.n_range} levels), R² = {g(ise.r2, 5)}"),
+               ("Detection limit (IUPAC)", f"{g(ise.lod, 3)} {cs.conc_unit}" if ise.lod_found else "below the lowest standard"),
+               ("E° (a = 1 M)", f"{g(cs.e0_mv, 4)} mV")]
+    if o.ionic_strength > 0:
+        results.append(("Activity coefficient", f"{cs.gamma:.3f} (ionic strength {g(o.ionic_strength)} M)"))
+    return settings, results
+
+
 def calibration_rows(cs: sa.CalibrationStudy) -> tuple[list[tuple[str, str]], list[tuple[str, str]]]:
     """(settings, results) key/value rows of a calibration."""
+    if cs.ise is not None:
+        return _electrode_rows(cs)
     o, f = cs.options, cs.fom
     settings = [("Quantity", f"{o.quantity} ({cs.y_unit})"), ("Selection", _where(o)),
                 ("Model", cal.MODEL_LABELS[cs.model] + (" (chosen by AIC)" if o.model == "auto" else "")),

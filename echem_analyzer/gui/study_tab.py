@@ -8,7 +8,7 @@ from typing import Callable, Optional
 from PySide6.QtCore import QSignalBlocker, Qt
 from PySide6.QtWidgets import (
     QAbstractItemView, QCheckBox, QComboBox, QDialog, QDialogButtonBox, QDoubleSpinBox, QFormLayout, QFrame,
-    QGridLayout, QHBoxLayout, QLabel, QLineEdit, QMessageBox, QPushButton, QScrollArea, QTabWidget,
+    QGridLayout, QHBoxLayout, QLabel, QLineEdit, QMessageBox, QPushButton, QScrollArea, QSpinBox, QTabWidget,
     QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget,
 )
 
@@ -405,6 +405,24 @@ class CalibrationPanel(_Panel):
         self.k_lod.setToolTip("LOD = k·σ/S (3 = IUPAC-style, 3.3 = ICH); LOQ uses 10.")
         self.restrict = QCheckBox("Use only the linear range for S, LOD, LOQ")
         self.restrict.setChecked(True)
+        self.ise = QCheckBox("Ion-selective electrode (potentiometric)")
+        self.ise.setToolTip("Finds the Nernstian region and the IUPAC detection limit, and judges the slope against 2.303·R·T/(z·F). "
+                            "Responses must be potentials (mV or V).")
+        self.z = QSpinBox()
+        self.z.setRange(-4, 4)
+        self.z.setValue(1)
+        self.z.setToolTip("Charge of the ion: +1 for Na⁺ or K⁺, −1 for Cl⁻ or NO₃⁻, +2 for Ca²⁺.")
+        self.temp = QDoubleSpinBox()
+        self.temp.setRange(0, 60)
+        self.temp.setDecimals(1)
+        self.temp.setSuffix(" °C")
+        self.temp.setValue(25.0)
+        self.ionic = QDoubleSpinBox()
+        self.ionic.setRange(0, 1.0)
+        self.ionic.setDecimals(3)
+        self.ionic.setSingleStep(0.01)
+        self.ionic.setSuffix(" M")
+        self.ionic.setToolTip("Constant background ionic strength of the standards (an adjuster such as ISA). 0 = treat concentration as activity.")
         self.r2 = QDoubleSpinBox()
         self.r2.setRange(0.5, 0.99999)
         self.r2.setDecimals(4)
@@ -424,6 +442,10 @@ class CalibrationPanel(_Panel):
         self.form.addRow(self.restrict)
         self.form.addRow("Linear range R² ≥", self.r2)
         self.form.addRow("Max deviation", self.dev)
+        self.form.addRow(self.ise)
+        self.form.addRow("Ion charge z", self.z)
+        self.form.addRow("Temperature", self.temp)
+        self.form.addRow("Background ionic strength", self.ionic)
         for w in (self.quantity, self.condition, self.group, self.time, self.model, self.unit, self.xscale, self.sigma, self.normalise):
             w.currentIndexChanged.connect(self._changed)
         self.quantity.currentIndexChanged.connect(self._refill_dependent)
@@ -431,6 +453,11 @@ class CalibrationPanel(_Panel):
             w.setKeyboardTracking(False)
             w.valueChanged.connect(self._changed)
         self.restrict.toggled.connect(self._changed)
+        self.ise.toggled.connect(self._changed)
+        self.z.valueChanged.connect(self._changed)
+        for w in (self.temp, self.ionic):
+            w.setKeyboardTracking(False)
+            w.valueChanged.connect(self._changed)
         self.samples_table = make_table()
         sc = Card("Samples (unknowns and spikes)", margins=10)
         sc.body.addWidget(self.samples_table, 1)
@@ -447,7 +474,8 @@ class CalibrationPanel(_Panel):
         return sa.CalibrationOptions(
             quantity=self.quantity.currentText(), condition=self.condition.currentText() or "analyte",
             group=self.group.currentText() if self.group.currentIndex() > 0 else None, time=self.time.currentData(),
-            model=self.model.currentData(), normalise=self.normalise.currentData(),
+            model=self.model.currentData(), normalise=self.normalise.currentData(), potentiometric=self.ise.isChecked(), z=self.z.value() or 1,
+            temp_c=self.temp.value(), ionic_strength=self.ionic.value(),
             conc_unit=self.unit.currentData() or "", sigma_from=self.sigma.currentData(), k_lod=self.k_lod.value(),
             k_loq=self.k_lod.value() * 10 / 3, restrict_range=self.restrict.isChecked(), r2_min=self.r2.value(),
             dev_max=self.dev.value() / 100.0)
@@ -482,6 +510,10 @@ class CalibrationPanel(_Panel):
         if "restrict_range" in st:
             with QSignalBlocker(self.restrict):
                 self.restrict.setChecked(bool(st["restrict_range"]))
+        for w, key in ((self.ise, "potentiometric"), (self.z, "z"), (self.temp, "temp_c"), (self.ionic, "ionic_strength")):
+            if key in st:
+                with QSignalBlocker(w):
+                    w.setChecked(bool(st[key])) if w is self.ise else w.setValue(st[key])
         self._loading = False
         self.recompute()
 
@@ -491,8 +523,17 @@ class CalibrationPanel(_Panel):
         self.store(asdict(self.options()))
         self.recompute()
 
+    def _show_electrode_controls(self) -> None:
+        """The electrode settings only matter in electrode mode, and the generic model and range settings only outside it."""
+        on = self.ise.isChecked()
+        for w in (self.z, self.temp, self.ionic):
+            self.form.setRowVisible(w, on)
+        for w in (self.model, self.sigma, self.k_lod, self.restrict, self.r2, self.dev, self.xscale):
+            self.form.setRowVisible(w, not on)
+
     def recompute(self) -> None:
         o = self.options()
+        self._show_electrode_controls()
         self.study = sa.run_calibration(self.session.responses, o) if o.quantity else None
         cs = self.study
         plots.study_calibration(self.plot.fig, cs, theme.current(), logx=self.xscale.currentData() == "log")
@@ -507,12 +548,22 @@ class CalibrationPanel(_Panel):
         f = cs.fom
         rng = f"{g(f.range_low, 3)} – {g(f.range_high, 3)}" if f and f.n_range else "—"
         r2 = cs.fit.r2
-        self.set_kpis([
-            ("Sensitivity", g(cs.sensitivity, 4), cs.sensitivity_unit, ""),
-            ("LOD", g(cs.lod, 3), f"{cs.conc_unit} · LOQ {g(cs.loq, 3)}", ""),
-            ("Linear range", rng, f"{cs.conc_unit} · {f.n_range if f else 0} levels", ""),
-            ("Model", cal.MODEL_LABELS[cs.model].split(" ")[0], f"R² = {r2:.4f}", "success" if r2 >= 0.995 else ("warning" if r2 < 0.98 else "")),
-        ])
+        if cs.ise is not None:
+            ise = cs.ise
+            self.set_kpis([
+                ("Slope", f"{ise.slope:+.2f}", f"mV/decade · {ise.slope_pct:.0f} % of {ise.nernst:.1f}",
+                 "success" if 90 <= ise.slope_pct <= 105 else "warning"),
+                ("Detection limit", g(ise.lod, 3) if ise.lod_found else "below range", cs.conc_unit if ise.lod_found else "lowest standard", ""),
+                ("Nernstian region", rng, f"{cs.conc_unit} · {f.n_range} levels", ""),
+                ("E° (a = 1 M)", g(cs.e0_mv, 4), "mV" + (f" · γ = {cs.gamma:.3f}" if cs.gamma != 1.0 else ""), ""),
+            ])
+        else:
+            self.set_kpis([
+                ("Sensitivity", g(cs.sensitivity, 4), cs.sensitivity_unit, ""),
+                ("LOD", g(cs.lod, 3), f"{cs.conc_unit} · LOQ {g(cs.loq, 3)}", ""),
+                ("Linear range", rng, f"{cs.conc_unit} · {f.n_range if f else 0} levels", ""),
+                ("Model", cal.MODEL_LABELS[cs.model].split(" ")[0], f"R² = {r2:.4f}", "success" if r2 >= 0.995 else ("warning" if r2 < 0.98 else "")),
+            ])
         rows = []
         for k, fit in cs.fits.items():
             if fit.ok:

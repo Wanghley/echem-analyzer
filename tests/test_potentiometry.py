@@ -4,6 +4,7 @@ import math
 import numpy as np
 import pytest
 
+from echem_analyzer import calibration as cal_module
 from echem_analyzer import potentiometry as pot
 
 S25 = 59.16                                          # mV/decade, z = 1, 25 °C
@@ -53,6 +54,17 @@ def test_the_slope_and_limit_are_accurate_whatever_the_noise():
         lods.append(fit.lod)
     assert np.mean(slopes) == pytest.approx(S25, rel=0.01) and np.std(slopes) < 0.5
     assert np.median(lods) == pytest.approx(2e-6, rel=0.25)
+
+
+def test_one_wrong_standard_does_not_let_the_curved_corner_into_the_fit():
+    e = ise_response(LEVELS, noise=0.1)
+    clean = pot.fit_ise(LEVELS, e)
+    e_bad = e.copy()
+    e_bad[12] += 12.0                                                                   # the 1e-2 M standard is 12 mV off
+    bad = pot.fit_ise(LEVELS, e_bad)
+    assert bad.lod_found and bad.c_low == pytest.approx(clean.c_low)                    # the same region: the corner is still left out
+    assert bad.slope == pytest.approx(S25, rel=0.03) and 12 in bad.index               # the bad point stays in, to be found by the diagnostics
+    assert bad.lod == pytest.approx(clean.lod, rel=0.15)
 
 
 def test_a_straight_curve_has_no_detection_limit_to_read_off():
@@ -120,3 +132,122 @@ def test_fixed_interference_method_reads_k_off_the_crossing():
     assert pot.log_k_fim(fit, a_j, 1, 1) == pytest.approx(true_log_k, abs=0.3)
     assert math.isnan(pot.log_k_fim(pot.fit_ise(10 ** np.arange(-5, -1, 0.5), 210 + S25 * np.arange(-5, -1, 0.5)), a_j, 1, 1))
     assert math.isnan(pot.log_k_ssm(100, 80, 0.0, 0.1, 1, 1)) and math.isnan(pot.log_k_ssm(100, 80, 0.01, 0.1, 0, 1))
+
+
+# ===================================================================== in the sensor study
+
+def _ise_responses(a_m=LEVELS, unit="mV", gamma=1.0, samples=(), seed=3, scale=1.0, **kw):
+    """Standards in µM (the activity is gamma x the concentration) with the response in `unit`; samples are potentials in mV."""
+    from echem_analyzer.models import Response
+    e = ise_response(np.asarray(a_m) * gamma, seed=seed, **kw) * scale
+    rs = [Response(id=f"s{i}", source_label=f"std {c * 1e6:.3g} µM", quantity="E", unit=unit, value=float(v), conc=float(c * 1e6), conc_unit="µM",
+                   group="ISE1", role="standard") for i, (c, v) in enumerate(zip(a_m, e))]
+    rs += [Response(id=f"u{i}", source_label=f"sample {i + 1}", quantity="E", unit=unit, value=float(v) * scale, role="sample", group="ISE1")
+           for i, v in enumerate(samples)]
+    return rs
+
+
+def _run(rs, **kw):
+    from echem_analyzer import study_analysis as sa
+    return sa.run_calibration(rs, sa.CalibrationOptions(quantity="E", potentiometric=True, **kw))
+
+
+def test_the_study_reports_slope_detection_limit_and_range_of_an_electrode():
+    cs = _run(_ise_responses(samples=[210 + S25 * math.log10(3e-4)]))
+    assert cs.ok and cs.model == "loglinear" and cs.ise.lod_found
+    assert cs.sensitivity == pytest.approx(S25, rel=0.01) and cs.sensitivity_unit == "mV/decade"
+    assert cs.lod == pytest.approx(2.0, rel=0.25) and cs.conc_unit == "µM"            # 2e-6 M
+    assert math.isnan(cs.loq) and cs.fom.range_low > 10 * cs.lod and cs.fom.n_range >= 4
+    assert not any("Nernstian slope for z" in w for w in cs.warnings)                  # the generic log-linear remarks are replaced
+    (s,) = cs.samples
+    assert s.conc == pytest.approx(300.0, rel=0.03) and s.lo < s.conc < s.hi          # 3e-4 M = 300 µM, with its interval
+
+
+def test_potentials_in_volts_are_converted_and_a_wrong_unit_is_questioned():
+    cs = _run(_ise_responses(unit="V", scale=1e-3))
+    assert cs.y_unit == "mV" and cs.sensitivity == pytest.approx(S25, rel=0.01)
+    bad = _run(_ise_responses(unit="µA"))
+    assert any("expects potentials in mV or V" in w for w in bad.warnings)
+
+
+def test_the_standard_potential_needs_the_activity_coefficient_when_the_background_is_ionic():
+    from echem_analyzer.potentiometry import activity_coefficient
+    gamma = activity_coefficient(1, 0.1)                                                # standards in a 0.1 M background
+    rs = _ise_responses(gamma=gamma, noise=0.05)
+    corrected, ideal = _run(rs, ionic_strength=0.1), _run(rs)
+    assert corrected.gamma == pytest.approx(gamma) and ideal.gamma == 1.0
+    assert corrected.e0_mv == pytest.approx(210.0, abs=2.0)                             # the E0 the electrode really has
+    assert ideal.e0_mv == pytest.approx(210.0 + S25 * math.log10(gamma), abs=2.0)       # without the correction it is off by S·log γ (6 mV)
+    assert corrected.sensitivity == pytest.approx(ideal.sensitivity)                   # the slope does not depend on γ
+
+
+def test_a_reading_is_described_by_where_it_falls_below_the_limit_in_the_curved_foot_or_above_the_region():
+    plateau = 210 + S25 * math.log10(2e-6)                                              # the flat part sits at the detection limit by definition
+    cs = _run(_ise_responses(samples=[plateau - 6.0, 210 + S25 * math.log10(1e-5), 210 + S25 * math.log10(3e-3), 210 + S25 * math.log10(0.5)]))
+    text = {s.label: [w for w in cs.warnings if f"“{s.label}”" in w] for s in cs.samples}
+    assert len(text["sample 1"]) == 1 and "below the detection limit" in text["sample 1"][0] and "not as a value" in text["sample 1"][0]
+    assert len(text["sample 2"]) == 1 and "curved there" in text["sample 2"][0] and "approximate" in text["sample 2"][0]
+    assert text["sample 3"] == []                                                       # inside the region: nothing to say
+    assert len(text["sample 4"]) == 1 and "above the Nernstian region" in text["sample 4"][0]
+
+
+def test_a_clean_electrode_calibration_flags_no_standard_for_sub_millivolt_curvature():
+    rs = _ise_responses()                                                               # quiet data (0.2 mV): the foot of the region is off by ~0.5 mV
+    cs = _run(rs)
+    assert cs.diagnostics is not None and cs.flagged_points() == []
+    strict = cal_module.diagnostics(cs.fit)                                             # without the minimum, the same data name a standard
+    assert strict.flagged, "the test data should show the effect the minimum residual is there to remove"
+
+
+def test_a_wrong_charge_and_too_few_standards_are_explained():
+    cs = _run(_ise_responses(), z=-1)
+    assert any("positive" in w and "anion" in w for w in cs.warnings)
+    few = _run(_ise_responses(a_m=[1e-4, 1e-3]))
+    assert not few.ok and any("two or more different" in w or "at least three" in w for w in few.warnings)
+
+
+def test_standard_indices_refer_to_the_right_response_inside_the_nernstian_region():
+    rs = _ise_responses(noise=0.1)
+    k = 12
+    rs[k].value += 12.0                                                                 # one standard in the Nernstian region is wrong
+    cs = _run(rs)
+    flagged = cs.flagged_points()
+    assert [cs.labels[i] for i, _ in flagged] == [rs[k].source_label]
+    assert len(cs.fit_index) == len(cs.fit.x) and cs.x[cs.fit_index[0]] == pytest.approx(cs.fit.x[0])
+
+
+# ===================================================================== in the Study tab and the report
+
+def test_the_calibration_panel_switches_to_electrode_mode_and_remembers_it(qapp, tmp_path):
+    from helpers import make_window
+    win = make_window(tmp_path / "w")
+    win.session.responses[:] = _ise_responses(samples=[210 + S25 * math.log10(3e-4)])
+    win.session.responses_changed.emit()
+    panel = win.study_tab.calibration
+    assert panel.form.isRowVisible(panel.model) and not panel.form.isRowVisible(panel.z)              # off: the usual settings
+    panel.ise.setChecked(True)
+    assert panel.study.ise is not None and panel.form.isRowVisible(panel.z) and not panel.form.isRowVisible(panel.model)
+    labels = [card.label.text() for card in panel.kpis if not card.isHidden()]
+    assert labels == ["SLOPE", "DETECTION LIMIT", "NERNSTIAN REGION", "E° (A = 1 M)"]
+    assert panel.kpis[0].value.text().startswith("+58.") and "of 59.2" in panel.kpis[0].sub.text()
+    assert win.session.extras["study"]["calibration"]["potentiometric"] is True
+    panel.z.setValue(-1)                                                                # the wrong charge: the app says so
+    assert any("anion" in w for w in panel.study.warnings) and "anion" in panel.notice.text()
+    panel.z.setValue(1)
+    win.session.responses_changed.emit()                                                # a refresh restores the stored choice
+    assert panel.ise.isChecked() and panel.z.value() == 1
+    panel.ise.setChecked(False)
+    assert panel.study.ise is None and panel.form.isRowVisible(panel.model)
+
+
+def test_the_report_states_an_electrode_calibration_in_electrode_terms():
+    from echem_analyzer import study_analysis as sa, study_report
+    cs = sa.run_calibration(_ise_responses(), sa.CalibrationOptions(quantity="E", potentiometric=True, ionic_strength=0.1))
+    settings, results = study_report.calibration_rows(cs)
+    assert ("Mode", "ion-selective electrode, z = +1, 25 °C, background ionic strength 0.1 M (Davies)") in settings
+    keys = [k for k, _ in results]
+    assert keys == ["Standards", "Slope", "Nernstian region", "Detection limit (IUPAC)", "E° (a = 1 M)", "Activity coefficient"]
+    slope = dict(results)["Slope"]
+    assert slope.startswith("+58.") and "% of the theoretical 59.16" in slope
+    assert "µM" in dict(results)["Detection limit (IUPAC)"]
+    assert "LOQ" not in keys                                                            # an electrode has no LOQ in this sense

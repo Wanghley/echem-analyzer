@@ -329,13 +329,17 @@ class PointDiagnostics:
         return "; ".join(why)
 
 
-def diagnostics(fit: ModelFit, alpha: float = 0.05, cooks_limit: float = 1.0) -> Optional[PointDiagnostics]:
+def diagnostics(fit: ModelFit, alpha: float = 0.05, cooks_limit: float = 1.0, min_residual: float = 0.0) -> Optional[PointDiagnostics]:
     """Leverage, studentized residuals and Cook's distance of a linear or log-linear calibration; None for any other model.
 
     A point is an *outlier* when its externally studentized residual is beyond the two-sided limit of a t distribution with
     n − 3 degrees of freedom at ``alpha``/n (a Bonferroni correction, so a clean calibration is wrongly flagged in about 5 % of
     cases at most, however many standards it has) and *influential* when Cook's distance exceeds ``cooks_limit``.  Needs four
     points or more; with fewer there is nothing to compare a point against.
+
+    ``min_residual`` (in the unit of y) is the smallest distance from the line that matters in practice: a point closer than that
+    is never flagged, however many noise standard deviations it is.  Very quiet data otherwise flag deviations far smaller than
+    anything the measurement is used to resolve.
     """
     if not fit.ok or fit.model not in (LINEAR, LOGLIN):
         return None
@@ -358,8 +362,8 @@ def diagnostics(fit: ModelFit, alpha: float = 0.05, cooks_limit: float = 1.0) ->
     studentized = e / np.sqrt(s2_without * room)
     cooks = (e ** 2 / (s2 * room ** 2)) * h / p
     return PointDiagnostics(fit.model, h, studentized, cooks, limit,
-                            outliers=[int(i) for i in np.flatnonzero(np.abs(studentized) > limit)],
-                            influential=[int(i) for i in np.flatnonzero(cooks > cooks_limit)], dof=dof)
+                            outliers=[int(i) for i in np.flatnonzero((np.abs(studentized) > limit) & (np.abs(e) >= min_residual))],
+                            influential=[int(i) for i in np.flatnonzero((cooks > cooks_limit) & (np.abs(e) >= min_residual))], dof=dof)
 
 
 @dataclass
